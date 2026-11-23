@@ -1,0 +1,10 @@
+@* Sends the visitor to the login page and remembers where they wanted to go. *@
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized()
+    {
+        var returnUrl = Uri.EscapeDataString(Navigation.ToBaseRelativePath(Navigation.Uri));
+        Navigation.NavigateTo($"/konto/logga-in?returnUrl=/{returnUrl}", forceLoad: true);
+    }
+}

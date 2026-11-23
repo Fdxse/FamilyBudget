@@ -48,7 +48,8 @@ Byggd i C# / ASP.NET Core (.NET 10, Blazor Server) med MariaDB, och körs i Dock
    ```bash
    ./deploy/update.sh
    ```
-   Öppna `http://<nas>:5080`. Startsidan visar om databasen är ansluten och vilken commit som körs.
+   Öppna `http://<nas>:5080`. Första gången kommer du till sidan **Första uppstarten** där du skapar
+   ditt administratörskonto (och gärna din första budgetgrupp). Sidan stängs så fort ett konto finns.
 7. **(Valfritt) HTTPS:** Kontrollpanelen → Inloggningsportal → Avancerat → Omvänd proxy.
    Peka t.ex. `https://budget.dindomän.se` mot `http://localhost:5080` och lägg till anpassade rubriker för WebSocket
    (knappen *Skapa → WebSocket*), annars fungerar inte Blazor.
@@ -88,10 +89,30 @@ eller sätt den som user secret, och kör:
 dotnet run --project src/FamilyBudget.Web
 ```
 
+## Användare och budgetgrupper
+
+- **Administratörer** lägger upp konton under *Användare* och grupper under *Budgetgrupper*.
+- En **budgetgrupp** är en egen budget, t.ex. "Fredrik och Anna" eller "Kalle". Allt som registreras
+  (fakturor, inkomster) hör till en grupp, och bara gruppens medlemmar ser det.
+- En person kan vara med i flera grupper. Den som glömt sitt lösenord får ett nytt av en administratör,
+  och kan sedan byta det själv under *Byt lösenord*. Efter 5 felaktiga försök låses kontot i 5 minuter.
+
+## Databasändringar (migreringar)
+
+Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny
+migrering lokalt:
+
+```bash
+dotnet tool restore
+dotnet ef migrations add <Namn> --project src/FamilyBudget.Web --output-dir Data/Migrations
+```
+
 ## Paket
 
 - `Pomelo.EntityFrameworkCore.MySql` 9.0.0 (EF Core-drivrutin för MariaDB/MySQL)
 - `MySqlConnector` 2.6.2 (uppdaterad för att täppa till en känd sårbarhet i 2.4.0)
+- `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 9.0.23 (inloggning och användare)
+- `Microsoft.EntityFrameworkCore.Design` 9.0.23 och verktyget `dotnet-ef` 9.0.23 (bara för att skapa migreringar)
 
 Pomelo finns ännu inte i en version för EF Core 10, så appen använder EF Core 9 ovanpå .NET 10. Det fungerar fullt ut;
 vi byter till Pomelo 10 när den släpps.

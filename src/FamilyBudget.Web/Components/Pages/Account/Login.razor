@@ -1,0 +1,87 @@
+@page "/konto/logga-in"
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<PageTitle>Logga in</PageTitle>
+
+<h1>Logga in</h1>
+
+<div class="row">
+    <div class="col-md-5">
+        <StatusMessage Message="@errorMessage" IsError="true" />
+
+        <EditForm Model="Input" method="post" OnValidSubmit="LogInAsync" FormName="login">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="userName" class="form-label">Användarnamn</label>
+                <InputText id="userName" @bind-Value="Input.UserName" class="form-control" autocomplete="username" autofocus />
+                <ValidationMessage For="() => Input.UserName" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Lösenord</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="current-password" />
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Logga in</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+
+    [SupplyParameterFromForm(FormName = "login")]
+    private LoginInput Input { get; set; } = default!;
+
+    /// <summary>Page the user tried to open before being sent here.</summary>
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new LoginInput();
+
+        // Nobody can log in before the first account exists: go to first-time setup.
+        if (!await UserManager.Users.AnyAsync())
+        {
+            Navigation.NavigateTo("/setup");
+        }
+    }
+
+    private async Task LogInAsync()
+    {
+        // isPersistent: keep the login cookie after the browser is closed.
+        var signInResult = await SignInManager.PasswordSignInAsync(
+            Input.UserName.Trim(), Input.Password, isPersistent: true, lockoutOnFailure: true);
+
+        if (signInResult.Succeeded)
+        {
+            Navigation.NavigateTo(SafeReturnUrl(ReturnUrl));
+            return;
+        }
+
+        errorMessage = signInResult.IsLockedOut
+            ? "Kontot är låst i några minuter efter för många felaktiga försök."
+            : "Fel användarnamn eller lösenord.";
+    }
+
+    /// <summary>Only allow redirects within this site, never to another host.</summary>
+    private static string SafeReturnUrl(string? returnUrl) =>
+        !string.IsNullOrEmpty(returnUrl) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//")
+            ? returnUrl
+            : "/";
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "Ange användarnamn.")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange lösenord.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

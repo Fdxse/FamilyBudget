@@ -1,0 +1,175 @@
+@page "/admin/anvandare/{UserId}"
+@attribute [Authorize(Roles = RoleNames.Administrator)]
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<PageTitle>Ändra användare</PageTitle>
+
+@if (editedUser is null)
+{
+    <h1>Användaren finns inte</h1>
+    <a href="/admin/anvandare">Tillbaka till användare</a>
+}
+else
+{
+    <h1>@editedUser.DisplayName</h1>
+    <p class="text-muted">Användarnamn: @editedUser.UserName</p>
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    <div class="row">
+        <div class="col-md-6">
+            <h2 class="h5 mt-3">Uppgifter</h2>
+            <EditForm Model="DetailsInput" method="post" OnValidSubmit="SaveDetailsAsync" FormName="user-details">
+                <DataAnnotationsValidator />
+                <div class="mb-3">
+                    <label for="displayName" class="form-label">Namn</label>
+                    <InputText id="displayName" @bind-Value="DetailsInput.DisplayName" class="form-control" />
+                    <ValidationMessage For="() => DetailsInput.DisplayName" class="text-danger" />
+                </div>
+                <div class="form-check mb-3">
+                    <InputCheckbox id="isAdministrator" @bind-Value="DetailsInput.IsAdministrator" class="form-check-input" disabled="@isEditingSelf" />
+                    <label for="isAdministrator" class="form-check-label">Administratör</label>
+                    @if (isEditingSelf)
+                    {
+                        <div class="form-text">Du kan inte ta bort din egen administratörsroll.</div>
+                    }
+                </div>
+                <button type="submit" class="btn btn-primary">Spara</button>
+            </EditForm>
+
+            <h2 class="h5 mt-4">Nytt lösenord</h2>
+            <EditForm Model="PasswordInput" method="post" OnValidSubmit="ResetPasswordAsync" FormName="user-password">
+                <DataAnnotationsValidator />
+                <div class="mb-3">
+                    <label for="newPassword" class="form-label">Nytt lösenord (minst 8 tecken)</label>
+                    <InputText id="newPassword" type="password" @bind-Value="PasswordInput.NewPassword" class="form-control" autocomplete="new-password" />
+                    <ValidationMessage For="() => PasswordInput.NewPassword" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-secondary">Sätt lösenord</button>
+            </EditForm>
+
+            @if (!isEditingSelf)
+            {
+                <h2 class="h5 mt-4">Ta bort</h2>
+                <form method="post" @formname="delete-user" @onsubmit="DeleteUserAsync">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-outline-danger"
+                            onclick="return confirm('Ta bort användaren? Det går inte att ångra.');">
+                        Ta bort användaren
+                    </button>
+                </form>
+            }
+
+            <p class="mt-4"><a href="/admin/anvandare">Tillbaka till användare</a></p>
+        </div>
+    </div>
+}
+
+@code {
+    private ApplicationUser? editedUser;
+    private bool isEditingSelf;
+    private string? statusMessage;
+    private bool isError;
+
+    [Parameter]
+    public string UserId { get; set; } = string.Empty;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "user-details")]
+    private UserDetailsInput DetailsInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "user-password")]
+    private ResetPasswordInput PasswordInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        editedUser = await UserManager.FindByIdAsync(UserId);
+        if (editedUser is null)
+        {
+            return;
+        }
+
+        isEditingSelf = UserManager.GetUserId(HttpContext.User) == editedUser.Id;
+
+        // Fill the details form with current values, unless it is being posted right now.
+        DetailsInput ??= new UserDetailsInput
+        {
+            DisplayName = editedUser.DisplayName,
+            IsAdministrator = await UserManager.IsInRoleAsync(editedUser, RoleNames.Administrator),
+        };
+        PasswordInput ??= new ResetPasswordInput();
+    }
+
+    private async Task SaveDetailsAsync()
+    {
+        editedUser!.DisplayName = DetailsInput.DisplayName.Trim();
+        await UserManager.UpdateAsync(editedUser);
+
+        // Never let an administrator remove their own admin role (they could lock everyone out).
+        if (!isEditingSelf)
+        {
+            var isAdministratorNow = await UserManager.IsInRoleAsync(editedUser, RoleNames.Administrator);
+            if (DetailsInput.IsAdministrator && !isAdministratorNow)
+            {
+                await UserManager.AddToRoleAsync(editedUser, RoleNames.Administrator);
+            }
+            else if (!DetailsInput.IsAdministrator && isAdministratorNow)
+            {
+                await UserManager.RemoveFromRoleAsync(editedUser, RoleNames.Administrator);
+            }
+        }
+
+        statusMessage = "Sparat.";
+        isError = false;
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        // A reset token lets an administrator set a password without knowing the old one.
+        var resetToken = await UserManager.GeneratePasswordResetTokenAsync(editedUser!);
+        var resetResult = await UserManager.ResetPasswordAsync(editedUser!, resetToken, PasswordInput.NewPassword);
+        if (!resetResult.Succeeded)
+        {
+            statusMessage = string.Join(" ", resetResult.Errors.Select(error => error.Description));
+            isError = true;
+            return;
+        }
+
+        // Also unlock the account in case it was locked after wrong passwords.
+        await UserManager.SetLockoutEndDateAsync(editedUser!, null);
+        await UserManager.ResetAccessFailedCountAsync(editedUser!);
+
+        statusMessage = "Lösenordet är ändrat.";
+        isError = false;
+        PasswordInput = new ResetPasswordInput();
+    }
+
+    private async Task DeleteUserAsync()
+    {
+        if (isEditingSelf)
+        {
+            return;
+        }
+
+        await UserManager.DeleteAsync(editedUser!);
+        Navigation.NavigateTo("/admin/anvandare");
+    }
+
+    private sealed class UserDetailsInput
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(100)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        public bool IsAdministrator { get; set; }
+    }
+
+    private sealed class ResetPasswordInput
+    {
+        [Required(ErrorMessage = "Ange ett lösenord.")]
+        public string NewPassword { get; set; } = string.Empty;
+    }
+}

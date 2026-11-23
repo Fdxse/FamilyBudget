@@ -1,38 +1,57 @@
 @page "/"
-@using FamilyBudget.Web.Data
-@using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>FamilyBudget</PageTitle>
 
-<h1>FamilyBudget</h1>
+<h1>Hej @displayName!</h1>
 
-<p>Appen är igång.</p>
+<h2 class="h5 mt-4">Dina budgetgrupper</h2>
+@if (budgetGroupNames.Count == 0)
+{
+    <p class="text-muted">Du är inte med i någon budgetgrupp ännu. Be den som administrerar FamilyBudget att lägga till dig.</p>
+}
+else
+{
+    <ul>
+        @foreach (var budgetGroupName in budgetGroupNames)
+        {
+            <li>@budgetGroupName</li>
+        }
+    </ul>
+}
 
 @* Simple status line so you can see at a glance that the NAS setup works end to end. *@
-<p>
-    Databas:
-    @if (isDatabaseReachable)
-    {
-        <span class="text-success">ansluten</span>
-    }
-    else
-    {
-        <span class="text-danger">ej nåbar</span>
-    }
+<p class="text-muted small mt-5">
+    Databas: @(isDatabaseReachable ? "ansluten" : "ej nåbar") · Version: @applicationVersion
 </p>
 
-<p class="text-muted small">Version: @applicationVersion</p>
-
 @code {
+    private string displayName = string.Empty;
+    private List<string> budgetGroupNames = [];
     private bool isDatabaseReachable;
     private string applicationVersion = "okänd";
 
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
     protected override async Task OnInitializedAsync()
     {
-        // Check the database connection once when the page loads.
         await using var databaseContext = await ContextFactory.CreateDbContextAsync();
         isDatabaseReachable = await databaseContext.Database.CanConnectAsync();
+
+        // Look up the logged-in user's name and budget groups.
+        var currentUserId = UserManager.GetUserId(HttpContext.User);
+        var currentUser = await databaseContext.Users
+            .Include(user => user.BudgetGroupMemberships)
+            .ThenInclude(membership => membership.BudgetGroup)
+            .FirstOrDefaultAsync(user => user.Id == currentUserId);
+
+        displayName = currentUser?.DisplayName ?? string.Empty;
+        budgetGroupNames = currentUser?.BudgetGroupMemberships
+            .Select(membership => membership.BudgetGroup.Name)
+            .OrderBy(name => name)
+            .ToList() ?? [];
 
         // The Git commit is passed into the image at build time (see Dockerfile / update script).
         applicationVersion = Environment.GetEnvironmentVariable("APP_GIT_COMMIT") ?? "lokal utveckling";

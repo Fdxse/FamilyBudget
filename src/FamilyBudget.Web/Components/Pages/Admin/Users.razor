@@ -1,0 +1,152 @@
+@page "/admin/anvandare"
+@attribute [Authorize(Roles = RoleNames.Administrator)]
+@inject UserManager<ApplicationUser> UserManager
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Användare</PageTitle>
+
+<h1>Användare</h1>
+
+<StatusMessage Message="@statusMessage" IsError="@isError" />
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Namn</th>
+            <th>Användarnamn</th>
+            <th>Budgetgrupper</th>
+            <th>Admin</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var userRow in userRows)
+        {
+            <tr>
+                <td>@userRow.DisplayName</td>
+                <td>@userRow.UserName</td>
+                <td>@string.Join(", ", userRow.BudgetGroupNames)</td>
+                <td>@(userRow.IsAdministrator ? "Ja" : "")</td>
+                <td><a href="/admin/anvandare/@userRow.UserId">Ändra</a></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">Lägg till användare</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateUserAsync" FormName="create-user">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="displayName" class="form-label">Namn</label>
+                <InputText id="displayName" @bind-Value="Input.DisplayName" class="form-control" />
+                <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="userName" class="form-label">Användarnamn</label>
+                <InputText id="userName" @bind-Value="Input.UserName" class="form-control" autocomplete="off" />
+                <ValidationMessage For="() => Input.UserName" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Startlösenord (minst 8 tecken)</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="new-password" />
+                <div class="form-text">Personen kan byta det själv efter första inloggningen.</div>
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+
+            <div class="form-check mb-3">
+                <InputCheckbox id="isAdministrator" @bind-Value="Input.IsAdministrator" class="form-check-input" />
+                <label for="isAdministrator" class="form-check-label">Administratör (får hantera användare och grupper)</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Lägg till</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private List<UserRow> userRows = [];
+    private string? statusMessage;
+    private bool isError;
+
+    [SupplyParameterFromForm(FormName = "create-user")]
+    private CreateUserInput Input { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new CreateUserInput();
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        var users = await databaseContext.Users
+            .Include(user => user.BudgetGroupMemberships)
+            .ThenInclude(membership => membership.BudgetGroup)
+            .OrderBy(user => user.DisplayName)
+            .ToListAsync();
+
+        var administrators = await UserManager.GetUsersInRoleAsync(RoleNames.Administrator);
+        var administratorIds = administrators.Select(administrator => administrator.Id).ToHashSet();
+
+        userRows = users.Select(user => new UserRow(
+                user.Id,
+                user.DisplayName,
+                user.UserName ?? string.Empty,
+                user.BudgetGroupMemberships.Select(membership => membership.BudgetGroup.Name).OrderBy(name => name).ToList(),
+                administratorIds.Contains(user.Id)))
+            .ToList();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var newUser = new ApplicationUser
+        {
+            UserName = Input.UserName.Trim(),
+            DisplayName = Input.DisplayName.Trim(),
+        };
+
+        var createResult = await UserManager.CreateAsync(newUser, Input.Password);
+        if (!createResult.Succeeded)
+        {
+            statusMessage = string.Join(" ", createResult.Errors.Select(error => error.Description));
+            isError = true;
+            return;
+        }
+
+        if (Input.IsAdministrator)
+        {
+            await UserManager.AddToRoleAsync(newUser, RoleNames.Administrator);
+        }
+
+        statusMessage = $"{newUser.DisplayName} är tillagd. Lägg till personen i en budgetgrupp under Budgetgrupper.";
+        isError = false;
+        Input = new CreateUserInput();
+        await LoadUsersAsync();
+    }
+
+    private sealed record UserRow(string UserId, string DisplayName, string UserName, List<string> BudgetGroupNames, bool IsAdministrator);
+
+    private sealed class CreateUserInput
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(100)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett användarnamn.")]
+        [StringLength(50)]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett startlösenord.")]
+        public string Password { get; set; } = string.Empty;
+
+        public bool IsAdministrator { get; set; }
+    }
+}
