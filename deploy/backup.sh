@@ -65,7 +65,9 @@ fi
 echo "==> Saving login keys and settings"
 $sudo_prefix tar -czf "$work_folder/keys.tar.gz" -C "$DATA_ROOT" keys
 $sudo_prefix cp .env "$work_folder/env.txt"
-$sudo_prefix chmod 600 "$work_folder"/*
+# Name the files explicitly: a wildcard would be expanded by the normal user, who cannot
+# look inside the root-only folder, so it would not match anything.
+$sudo_prefix chmod 600 "$work_folder/database.sql.gz" "$work_folder/keys.tar.gz" "$work_folder/env.txt"
 
 $sudo_prefix mv "$work_folder" "$backup_folder"
 backup_size="$($sudo_prefix du -sh "$backup_folder" | cut -f1)"
