@@ -1,0 +1,89 @@
+# FamilyBudget
+
+Familjebudget för fakturor, inkomster och större utgifter, med månadsbudget och årsöversikt.
+Byggd i C# / ASP.NET Core (.NET 10, Blazor Server) med MariaDB, och körs i Docker på en Synology NAS.
+
+## Projektstruktur
+
+| Sökväg | Innehåll |
+| --- | --- |
+| `src/FamilyBudget.Web` | Webbappen (Blazor Server + EF Core) |
+| `Dockerfile` | Bygger app-imagen |
+| `docker-compose.yml` | App + MariaDB, data på NAS-sharen |
+| `.env.example` | Mall för inställningar och lösenord (kopieras till `.env` på NAS:en) |
+| `deploy/update.sh` | Körs på NAS:en: hämtar från GitHub, bygger, startar om, väntar på `/health` |
+| `deploy/remote-update.ps1` / `.sh` | Körs från din dator: kör `update.sh` på NAS:en via SSH |
+
+## Första uppsättningen på NAS:en (DS918+, DSM 7.2)
+
+1. **Paket i Package Center:** installera *Container Manager* och *Git Server* (det senare ger kommandot `git`).
+2. **SSH:** Kontrollpanelen → Terminal och SNMP → aktivera SSH. Din användare måste vara administratör.
+3. **Delad mapp för data:** Kontrollpanelen → Delad mapp → skapa t.ex. `familybudget` (blir `/volume1/familybudget`).
+   Hit hamnar databasfilerna (`mariadb/`) och nycklar för inloggning (`keys/`). Ta med mappen i din backup.
+4. **Åtkomst till GitHub från NAS:en** (behövs om repot är privat). Logga in med SSH och skapa en nyckel:
+   ```bash
+   ssh-keygen -t ed25519 -f ~/.ssh/familybudget_deploy -N ""
+   cat ~/.ssh/familybudget_deploy.pub
+   ```
+   Lägg in den publika nyckeln på GitHub: repot → Settings → Deploy keys → Add deploy key (bara läsrätt).
+   Lägg sedan till i `~/.ssh/config` på NAS:en:
+   ```
+   Host github.com
+       IdentityFile ~/.ssh/familybudget_deploy
+   ```
+5. **Klona repot:**
+   ```bash
+   mkdir -p /volume1/docker && cd /volume1/docker
+   git clone git@github.com:Fdxse/FamilyBudget.git familybudget
+   cd familybudget
+   cp .env.example .env
+   vi .env    # sätt DATA_ROOT, lösenord och DEPLOY_BRANCH
+   ```
+6. **Första starten:**
+   ```bash
+   ./deploy/update.sh
+   ```
+   Öppna `http://<nas>:5080`. Startsidan visar om databasen är ansluten och vilken commit som körs.
+7. **(Valfritt) HTTPS:** Kontrollpanelen → Inloggningsportal → Avancerat → Omvänd proxy.
+   Peka t.ex. `https://budget.dindomän.se` mot `http://localhost:5080` och lägg till anpassade rubriker för WebSocket
+   (knappen *Skapa → WebSocket*), annars fungerar inte Blazor.
+
+## Uppdatera från din dator
+
+Från Windows (PowerShell):
+
+```powershell
+.\deploy\remote-update.ps1 -NasSshTarget fredrik@192.168.1.10
+```
+
+Från Git Bash / Linux / macOS:
+
+```bash
+./deploy/remote-update.sh fredrik@192.168.1.10
+```
+
+Skriptet loggar in på NAS:en, hämtar senaste koden från GitHub, bygger en ny image, startar om containrarna
+och väntar tills `/health` svarar `Healthy`. Om något går fel skrivs de sista loggraderna ut.
+
+**Slippa lösenord:**
+- Lägg din publika SSH-nyckel i `~/.ssh/authorized_keys` på NAS:en (aktivera *Användarhemtjänst* i DSM först).
+- `sudo` frågar efter lösenord varje gång. Vill du slippa det kan du som root lägga till en rad i
+  `/etc/sudoers.d/familybudget`: `fredrik ALL=(ALL) NOPASSWD: /usr/local/bin/docker, /bin/mkdir, /bin/chown`
+  (kontrollera sökvägen med `which docker`).
+
+## Köra lokalt (utveckling)
+
+Kräver .NET 10 SDK och en MariaDB. Ändra anslutningssträngen i `src/FamilyBudget.Web/appsettings.Development.json`
+eller sätt den som user secret, och kör:
+
+```bash
+dotnet run --project src/FamilyBudget.Web
+```
+
+## Paket
+
+- `Pomelo.EntityFrameworkCore.MySql` 9.0.0 (EF Core-drivrutin för MariaDB/MySQL)
+- `MySqlConnector` 2.6.2 (uppdaterad för att täppa till en känd sårbarhet i 2.4.0)
+
+Pomelo finns ännu inte i en version för EF Core 10, så appen använder EF Core 9 ovanpå .NET 10. Det fungerar fullt ut;
+vi byter till Pomelo 10 när den släpps.
