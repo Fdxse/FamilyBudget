@@ -67,6 +67,9 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddErrorDescriber<SwedishIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
+// Used to cache whether a user has two-step verification (see TwoFactorRequirement).
+builder.Services.AddMemoryCache();
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/konto/logga-in";
@@ -75,6 +78,10 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.ExpireTimeSpan = TimeSpan.FromDays(30);
     options.SlidingExpiration = true;
 });
+
+// "Kom ihåg den här enheten" after a two-step login lasts 30 days.
+builder.Services.Configure<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>(
+    IdentityConstants.TwoFactorRememberMeScheme, options => options.ExpireTimeSpan = TimeSpan.FromDays(30));
 
 // --- Data protection ------------------------------------------------------
 // Keys used for cookies/antiforgery are stored on disk so logins survive container
@@ -127,6 +134,8 @@ if (app.Configuration.GetValue<bool>("UseHttpsRedirection"))
 }
 
 app.UseAuthentication();
+// Optionally force every user to turn on two-step verification (Security:RequireTwoFactor).
+app.UseTwoFactorRequirement();
 app.UseAuthorization();
 app.UseAntiforgery();
 

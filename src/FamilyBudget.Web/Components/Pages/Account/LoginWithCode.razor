@@ -1,0 +1,91 @@
+@page "/konto/logga-in-kod"
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Logga in med kod</PageTitle>
+
+<h1>Tvåstegsverifiering</h1>
+
+<div class="row">
+    <div class="col-md-5">
+        <StatusMessage Message="@errorMessage" IsError="true" />
+
+        <p>Öppna appen i mobilen och skriv in den sexsiffriga koden för FamilyBudget.</p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="LogInAsync" FormName="login-with-code">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3" style="max-width: 14rem">
+                <label for="twoFactorCode" class="form-label">Kod</label>
+                <InputText id="twoFactorCode" @bind-Value="Input.Code" class="form-control fs-5"
+                           autocomplete="one-time-code" inputmode="numeric" autofocus />
+                <ValidationMessage For="() => Input.Code" class="text-danger" />
+            </div>
+
+            <div class="form-check mb-3">
+                <InputCheckbox id="rememberDevice" @bind-Value="Input.RememberDevice" class="form-check-input" />
+                <label for="rememberDevice" class="form-check-label">Kom ihåg den här enheten i 30 dagar</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Logga in</button>
+        </EditForm>
+
+        <p class="mt-4">
+            Har du inte mobilen?
+            <a href="@RecoveryLink">Logga in med en återställningskod</a>.
+        </p>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+
+    [SupplyParameterFromForm(FormName = "login-with-code")]
+    private CodeInput Input { get; set; } = default!;
+
+    /// <summary>Page the user originally tried to open.</summary>
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string RecoveryLink =>
+        $"/konto/logga-in-aterstallningskod?ReturnUrl={Uri.EscapeDataString(LoginRedirects.SafeReturnUrl(ReturnUrl))}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new CodeInput();
+
+        // Only reachable after a correct password; otherwise back to the normal login.
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo("/konto/logga-in");
+        }
+    }
+
+    private async Task LogInAsync()
+    {
+        // Apps sometimes show the code as "123 456".
+        var authenticatorCode = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+        var signInResult = await SignInManager.TwoFactorAuthenticatorSignInAsync(
+            authenticatorCode, isPersistent: true, rememberClient: Input.RememberDevice);
+
+        if (signInResult.Succeeded)
+        {
+            Navigation.NavigateTo(LoginRedirects.SafeReturnUrl(ReturnUrl));
+            return;
+        }
+
+        errorMessage = signInResult.IsLockedOut
+            ? "Kontot är låst i några minuter efter för många felaktiga försök."
+            : "Koden stämmer inte. Vänta på nästa kod i appen och försök igen.";
+    }
+
+    private sealed class CodeInput
+    {
+        [Required(ErrorMessage = "Skriv in koden från appen.")]
+        [StringLength(9, MinimumLength = 6, ErrorMessage = "Koden är sex siffror.")]
+        public string Code { get; set; } = string.Empty;
+
+        public bool RememberDevice { get; set; }
+    }
+}

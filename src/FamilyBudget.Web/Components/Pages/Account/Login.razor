@@ -61,7 +61,15 @@
 
         if (signInResult.Succeeded)
         {
-            Navigation.NavigateTo(SafeReturnUrl(ReturnUrl));
+            Navigation.NavigateTo(LoginRedirects.SafeReturnUrl(ReturnUrl));
+            return;
+        }
+
+        // Correct password, but the account has two-step verification: ask for the app code.
+        if (signInResult.RequiresTwoFactor)
+        {
+            Navigation.NavigateTo(
+                $"/konto/logga-in-kod?ReturnUrl={Uri.EscapeDataString(LoginRedirects.SafeReturnUrl(ReturnUrl))}");
             return;
         }
 
@@ -69,12 +77,6 @@
             ? "Kontot är låst i några minuter efter för många felaktiga försök."
             : "Fel användarnamn eller lösenord.";
     }
-
-    /// <summary>Only allow redirects within this site, never to another host.</summary>
-    private static string SafeReturnUrl(string? returnUrl) =>
-        !string.IsNullOrEmpty(returnUrl) && returnUrl.StartsWith('/') && !returnUrl.StartsWith("//")
-            ? returnUrl
-            : "/";
 
     private sealed class LoginInput
     {

@@ -16,6 +16,7 @@
             <th>Användarnamn</th>
             <th>Budgetgrupper</th>
             <th>Admin</th>
+            <th>Tvåsteg</th>
             <th></th>
         </tr>
     </thead>
@@ -27,6 +28,7 @@
                 <td data-label="Användarnamn">@userRow.UserName</td>
                 <td data-label="Budgetgrupper">@string.Join(", ", userRow.BudgetGroupNames)</td>
                 <td data-label="Admin">@(userRow.IsAdministrator ? "Ja" : "")</td>
+                <td data-label="Tvåsteg">@(userRow.HasTwoFactor ? "Ja" : "Nej")</td>
                 <td><a href="/admin/anvandare/@userRow.UserId">Ändra</a></td>
             </tr>
         }
@@ -101,7 +103,8 @@
                 user.DisplayName,
                 user.UserName ?? string.Empty,
                 user.BudgetGroupMemberships.Select(membership => membership.BudgetGroup.Name).OrderBy(name => name).ToList(),
-                administratorIds.Contains(user.Id)))
+                administratorIds.Contains(user.Id),
+                user.TwoFactorEnabled))
             .ToList();
     }
 
@@ -132,7 +135,7 @@
         await LoadUsersAsync();
     }
 
-    private sealed record UserRow(string UserId, string DisplayName, string UserName, List<string> BudgetGroupNames, bool IsAdministrator);
+    private sealed record UserRow(string UserId, string DisplayName, string UserName, List<string> BudgetGroupNames, bool IsAdministrator, bool HasTwoFactor);
 
     private sealed class CreateUserInput
     {

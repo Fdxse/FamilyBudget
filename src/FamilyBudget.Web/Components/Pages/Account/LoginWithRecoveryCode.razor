@@ -1,0 +1,77 @@
+@page "/konto/logga-in-aterstallningskod"
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Logga in med återställningskod</PageTitle>
+
+<h1>Logga in med återställningskod</h1>
+
+<div class="row">
+    <div class="col-md-5">
+        <StatusMessage Message="@errorMessage" IsError="true" />
+
+        <p>
+            Skriv in en av återställningskoderna du sparade när du slog på tvåstegsverifiering.
+            Varje kod fungerar bara en gång. Slå gärna på tvåstegsverifiering igen med den nya mobilen efteråt.
+        </p>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="LogInAsync" FormName="login-with-recovery-code">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3" style="max-width: 18rem">
+                <label for="recoveryCode" class="form-label">Återställningskod</label>
+                <InputText id="recoveryCode" @bind-Value="Input.RecoveryCode" class="form-control font-monospace"
+                           autocomplete="off" autofocus />
+                <ValidationMessage For="() => Input.RecoveryCode" class="text-danger" />
+            </div>
+
+            <button type="submit" class="btn btn-primary">Logga in</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+
+    [SupplyParameterFromForm(FormName = "login-with-recovery-code")]
+    private RecoveryInput Input { get; set; } = default!;
+
+    /// <summary>Page the user originally tried to open.</summary>
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new RecoveryInput();
+
+        // Only reachable after a correct password; otherwise back to the normal login.
+        if (await SignInManager.GetTwoFactorAuthenticationUserAsync() is null)
+        {
+            Navigation.NavigateTo("/konto/logga-in");
+        }
+    }
+
+    private async Task LogInAsync()
+    {
+        // Codes are stored without spaces; people often type them with one.
+        var recoveryCode = Input.RecoveryCode.Replace(" ", string.Empty);
+        var signInResult = await SignInManager.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
+
+        if (signInResult.Succeeded)
+        {
+            Navigation.NavigateTo(LoginRedirects.SafeReturnUrl(ReturnUrl));
+            return;
+        }
+
+        errorMessage = signInResult.IsLockedOut
+            ? "Kontot är låst i några minuter efter för många felaktiga försök."
+            : "Återställningskoden stämmer inte eller är redan använd.";
+    }
+
+    private sealed class RecoveryInput
+    {
+        [Required(ErrorMessage = "Skriv in en återställningskod.")]
+        public string RecoveryCode { get; set; } = string.Empty;
+    }
+}

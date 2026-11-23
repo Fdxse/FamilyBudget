@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = RoleNames.Administrator)]
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
 
 <PageTitle>Ändra användare</PageTitle>
 
@@ -49,6 +50,23 @@ else
                 <button type="submit" class="btn btn-secondary">Sätt lösenord</button>
             </EditForm>
 
+            <h2 class="h5 mt-4">Tvåstegsverifiering</h2>
+            @if (hasTwoFactor)
+            {
+                <p>Påslagen. Har användaren bytt eller tappat bort mobilen kan du nollställa den, så får hen ställa in den igen vid nästa inloggning.</p>
+                <form method="post" @formname="reset-two-factor" @onsubmit="ResetTwoFactorAsync">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-outline-secondary"
+                            onclick="return confirm('Nollställa tvåstegsverifiering för användaren?');">
+                        Nollställ tvåstegsverifiering
+                    </button>
+                </form>
+            }
+            else
+            {
+                <p class="text-muted">Inte påslagen.</p>
+            }
+
             @if (!isEditingSelf)
             {
                 <h2 class="h5 mt-4">Ta bort</h2>
@@ -69,6 +87,7 @@ else
 @code {
     private ApplicationUser? editedUser;
     private bool isEditingSelf;
+    private bool hasTwoFactor;
     private string? statusMessage;
     private bool isError;
 
@@ -93,6 +112,7 @@ else
         }
 
         isEditingSelf = UserManager.GetUserId(HttpContext.User) == editedUser.Id;
+        hasTwoFactor = await UserManager.GetTwoFactorEnabledAsync(editedUser);
 
         // Fill the details form with current values, unless it is being posted right now.
         DetailsInput ??= new UserDetailsInput
@@ -145,6 +165,19 @@ else
         statusMessage = "Lösenordet är ändrat.";
         isError = false;
         PasswordInput = new ResetPasswordInput();
+    }
+
+    private async Task ResetTwoFactorAsync()
+    {
+        // Turn it off and throw away the old key and recovery codes, so the old phone no longer works.
+        await UserManager.SetTwoFactorEnabledAsync(editedUser!, false);
+        await UserManager.ResetAuthenticatorKeyAsync(editedUser!);
+        await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(editedUser!, 0);
+        MemoryCache.Remove(TwoFactorRequirement.CacheKey(editedUser!.Id));
+
+        hasTwoFactor = false;
+        statusMessage = "Tvåstegsverifiering är nollställd. Användaren får ställa in den på nytt.";
+        isError = false;
     }
 
     private async Task DeleteUserAsync()

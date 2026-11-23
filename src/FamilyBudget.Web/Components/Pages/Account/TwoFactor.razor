@@ -1,0 +1,256 @@
+@page "/konto/tvastegsverifiering"
+@using System.Text
+@using Microsoft.Extensions.Caching.Memory
+@using QRCoder
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IConfiguration Configuration
+@inject IMemoryCache MemoryCache
+
+<PageTitle>Tvåstegsverifiering</PageTitle>
+
+<h1>Tvåstegsverifiering</h1>
+
+<div class="row">
+    <div class="col-lg-7">
+        @if (IsRequiredNotice == 1 && !isEnabled)
+        {
+            <div class="alert alert-warning">
+                Tvåstegsverifiering krävs för att använda FamilyBudget. Slå på den nedan, så kommer du vidare.
+            </div>
+        }
+
+        <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+        @if (newRecoveryCodes is not null)
+        {
+            @* Shown only once, right after they are created. *@
+            <div class="alert alert-info">
+                <h2 class="h5">Dina återställningskoder</h2>
+                <p>
+                    Spara koderna på ett säkert ställe, till exempel utskrivna eller i en lösenordshanterare.
+                    Om du tappar bort mobilen kan du logga in med en av dem (varje kod fungerar en gång).
+                    De visas bara nu.
+                </p>
+                <div class="row row-cols-2 font-monospace fs-5 mb-2">
+                    @foreach (var recoveryCode in newRecoveryCodes)
+                    {
+                        <div class="col">@recoveryCode</div>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (!isEnabled)
+        {
+            <p>
+                Med tvåstegsverifiering behöver du både lösenordet och en sexsiffrig kod från en app i mobilen
+                för att logga in. Det skyddar er ekonomi även om någon kommer över lösenordet.
+            </p>
+
+            <h2 class="h5 mt-4">1. Installera en app</h2>
+            <p>Till exempel Microsoft Authenticator, Google Authenticator eller den inbyggda i iPhones lösenordsapp.</p>
+
+            <h2 class="h5 mt-4">2. Skanna QR-koden</h2>
+            <div class="d-flex flex-wrap gap-4 align-items-start">
+                <div class="two-factor-qr border rounded p-2 bg-white" style="width: 220px; height: 220px">
+                    @((MarkupString)qrCodeSvg)
+                </div>
+                <div>
+                    <p class="mb-1">Går det inte att skanna? Skriv in nyckeln för hand:</p>
+                    <p class="font-monospace fs-5">@FormatKey(authenticatorKey)</p>
+                </div>
+            </div>
+
+            <h2 class="h5 mt-4">3. Skriv in koden som appen visar</h2>
+            <EditForm Model="VerifyInput" method="post" OnValidSubmit="EnableAsync" FormName="enable-two-factor">
+                <DataAnnotationsValidator />
+                <div class="mb-3" style="max-width: 14rem">
+                    <label for="verificationCode" class="form-label">Kod</label>
+                    <InputText id="verificationCode" @bind-Value="VerifyInput.Code" class="form-control fs-5"
+                               autocomplete="one-time-code" inputmode="numeric" />
+                    <ValidationMessage For="() => VerifyInput.Code" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-primary">Slå på</button>
+            </EditForm>
+        }
+        else
+        {
+            <p class="text-success fs-5">✓ Tvåstegsverifiering är påslagen.</p>
+            <p>Du har @recoveryCodesLeft återställningskoder kvar.</p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <form method="post" @formname="new-recovery-codes" @onsubmit="CreateNewRecoveryCodesAsync">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-outline-secondary">Skapa nya återställningskoder</button>
+                </form>
+
+                @if (isDeviceRemembered)
+                {
+                    <form method="post" @formname="forget-device" @onsubmit="ForgetDeviceAsync">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-outline-secondary">Glöm den här enheten</button>
+                    </form>
+                }
+
+                @if (!TwoFactorRequirement.IsRequired(Configuration))
+                {
+                    <form method="post" @formname="disable-two-factor" @onsubmit="DisableAsync">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-outline-danger"
+                                onclick="return confirm('Stänga av tvåstegsverifiering?');">
+                            Stäng av
+                        </button>
+                    </form>
+                }
+            </div>
+            @if (TwoFactorRequirement.IsRequired(Configuration))
+            {
+                <p class="form-text mt-2">Tvåstegsverifiering krävs för alla och kan inte stängas av. Har du bytt mobil kan en administratör nollställa den.</p>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    // Name shown in the authenticator app.
+    private const string IssuerName = "FamilyBudget";
+    private const int RecoveryCodeCount = 10;
+
+    private ApplicationUser currentUser = default!;
+    private bool isEnabled;
+    private bool isDeviceRemembered;
+    private int recoveryCodesLeft;
+    private string authenticatorKey = string.Empty;
+    private string qrCodeSvg = string.Empty;
+    private IEnumerable<string>? newRecoveryCodes;
+    private string? statusMessage;
+    private bool isError;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    /// <summary>1 when the user was sent here because two-step verification is required.</summary>
+    [SupplyParameterFromQuery(Name = "krav")]
+    private int? IsRequiredNotice { get; set; }
+
+    [SupplyParameterFromForm(FormName = "enable-two-factor")]
+    private VerifyCodeInput VerifyInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        VerifyInput ??= new VerifyCodeInput();
+        currentUser = (await UserManager.GetUserAsync(HttpContext.User))!;
+        await LoadStateAsync();
+    }
+
+    private async Task LoadStateAsync()
+    {
+        isEnabled = await UserManager.GetTwoFactorEnabledAsync(currentUser);
+        isDeviceRemembered = await SignInManager.IsTwoFactorClientRememberedAsync(currentUser);
+        recoveryCodesLeft = await UserManager.CountRecoveryCodesAsync(currentUser);
+
+        if (!isEnabled)
+        {
+            // Each user gets a secret key that the app uses to calculate the codes.
+            var existingKey = await UserManager.GetAuthenticatorKeyAsync(currentUser);
+            if (string.IsNullOrEmpty(existingKey))
+            {
+                await UserManager.ResetAuthenticatorKeyAsync(currentUser);
+                existingKey = await UserManager.GetAuthenticatorKeyAsync(currentUser);
+            }
+            authenticatorKey = existingKey!;
+            qrCodeSvg = CreateQrCodeSvg(BuildAuthenticatorUri(currentUser.UserName!, authenticatorKey));
+        }
+    }
+
+    private async Task EnableAsync()
+    {
+        // Apps sometimes show the code as "123 456".
+        var verificationCode = VerifyInput.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+        var isCodeValid = await UserManager.VerifyTwoFactorTokenAsync(
+            currentUser, UserManager.Options.Tokens.AuthenticatorTokenProvider, verificationCode);
+        if (!isCodeValid)
+        {
+            statusMessage = "Koden stämmer inte. Kontrollera att du skannade rätt QR-kod och försök med nästa kod.";
+            isError = true;
+            return;
+        }
+
+        await UserManager.SetTwoFactorEnabledAsync(currentUser, true);
+        newRecoveryCodes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(currentUser, RecoveryCodeCount);
+        // The "must set up two-step" check is cached; forget it so the user can continue at once.
+        MemoryCache.Remove(TwoFactorRequirement.CacheKey(currentUser.Id));
+        await SignInManager.RefreshSignInAsync(currentUser);
+
+        statusMessage = "Tvåstegsverifiering är påslagen.";
+        isError = false;
+        await LoadStateAsync();
+    }
+
+    private async Task CreateNewRecoveryCodesAsync()
+    {
+        // The old codes stop working when new ones are created.
+        newRecoveryCodes = await UserManager.GenerateNewTwoFactorRecoveryCodesAsync(currentUser, RecoveryCodeCount);
+        statusMessage = "Nya återställningskoder är skapade. De gamla fungerar inte längre.";
+        isError = false;
+        await LoadStateAsync();
+    }
+
+    private async Task ForgetDeviceAsync()
+    {
+        await SignInManager.ForgetTwoFactorClientAsync();
+        statusMessage = "Den här enheten kommer att fråga efter kod nästa gång du loggar in.";
+        isError = false;
+        isDeviceRemembered = false;
+    }
+
+    private async Task DisableAsync()
+    {
+        if (TwoFactorRequirement.IsRequired(Configuration))
+        {
+            return;
+        }
+        await UserManager.SetTwoFactorEnabledAsync(currentUser, false);
+        // A new key next time, so an old phone setup cannot be reused.
+        await UserManager.ResetAuthenticatorKeyAsync(currentUser);
+        await SignInManager.RefreshSignInAsync(currentUser);
+        statusMessage = "Tvåstegsverifiering är avstängd.";
+        isError = false;
+        await LoadStateAsync();
+    }
+
+    /// <summary>The standard otpauth:// address that authenticator apps read from the QR code.</summary>
+    private static string BuildAuthenticatorUri(string userName, string key) =>
+        $"otpauth://totp/{Uri.EscapeDataString(IssuerName)}:{Uri.EscapeDataString(userName)}" +
+        $"?secret={key}&issuer={Uri.EscapeDataString(IssuerName)}&digits=6";
+
+    private static string CreateQrCodeSvg(string text)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        using var qrCodeData = qrGenerator.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q);
+        var svgQrCode = new SvgQRCode(qrCodeData);
+        // A viewBox (instead of fixed width/height) lets the CSS scale the code to fill its box.
+        // Keep the white quiet zone around the code; phone cameras need it to find the code.
+        return svgQrCode.GetGraphic(5, "#000000", "#ffffff", drawQuietZones: true,
+            sizingMode: SvgQRCode.SizingMode.ViewBoxAttribute);
+    }
+
+    /// <summary>Splits the key in groups of four so it is easier to type: "abcd efgh ...".</summary>
+    private static string FormatKey(string key)
+    {
+        var formattedKey = new StringBuilder();
+        for (var position = 0; position < key.Length; position += 4)
+        {
+            formattedKey.Append(key.AsSpan(position, Math.Min(4, key.Length - position))).Append(' ');
+        }
+        return formattedKey.ToString().ToLowerInvariant().TrimEnd();
+    }
+
+    private sealed class VerifyCodeInput
+    {
+        [Required(ErrorMessage = "Skriv in koden från appen.")]
+        [StringLength(9, MinimumLength = 6, ErrorMessage = "Koden är sex siffror.")]
+        public string Code { get; set; } = string.Empty;
+    }
+}
