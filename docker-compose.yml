@@ -45,6 +45,8 @@ services:
       ConnectionStrings__FamilyBudget: "Server=database;Port=3306;Database=familybudget;User=familybudget;Password=${DATABASE_PASSWORD}"
       Database__MariaDbVersion: "11.4"
       DataProtection__KeyFolder: /keys
+      # true = everyone must turn on two-step verification (app code) before using the app.
+      Security__RequireTwoFactor: ${REQUIRE_TWO_FACTOR:-false}
       TZ: ${TIMEZONE:-Europe/Stockholm}
     volumes:
       # Keys that protect login cookies, kept so users stay logged in after restarts.

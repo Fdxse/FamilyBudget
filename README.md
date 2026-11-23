@@ -157,6 +157,40 @@ cd /volume1/Ekonomi/FamilyBudget/app
 sudo bash deploy/restore.sh /volume1/Ekonomi/FamilyBudget/backup/2026-11-23_030000
 ```
 
+## Tvåstegsverifiering och åtkomst utifrån
+
+**Tvåstegsverifiering (engångskod).** Under *Tvåstegsverifiering* i menyn slår var och en på inloggning med kod
+från en app i mobilen (Microsoft Authenticator, Google Authenticator, iPhones lösenordsapp m.fl.):
+
+1. Skanna QR-koden med appen (eller skriv in nyckeln för hand).
+2. Skriv in den sexsiffriga koden som appen visar.
+3. Spara de tio återställningskoderna som visas. De används om mobilen kommer bort, och varje kod fungerar en gång.
+
+Vid inloggning anges sedan lösenord och därefter koden. Bockar man i *Kom ihåg den här enheten* frågar appen inte
+efter kod på den enheten igen på 30 dagar. Har någon tappat mobilen och koderna kan en administratör trycka
+*Nollställ tvåstegsverifiering* på användaren under *Användare*; kolumnen *Tvåsteg* visar vilka som har slagit på den.
+
+**Kräv tvåstegsverifiering för alla.** Sätt `REQUIRE_TWO_FACTOR=true` i `.env` och kör `./deploy/update.sh`.
+Den som inte har slagit på det skickas då till inställningssidan direkt efter inloggning och kommer inte vidare
+förrän det är klart. Gör detta **innan** appen öppnas mot internet, och be alla logga in och ställa in appen först.
+
+**Öppna mot internet via HTTPS** (DSM 7.2):
+
+1. Kontrollpanelen → Extern åtkomst → DDNS: se till att t.ex. `fehre.synology.me` pekar på er router.
+2. Kontrollpanelen → Säkerhet → Certifikat → Lägg till → *Skaffa ett certifikat från Let's Encrypt* för
+   `budget.fehre.synology.me` (eller ett wildcard-certifikat för `*.fehre.synology.me`).
+3. Kontrollpanelen → Inloggningsportal → Avancerat → Omvänd proxy → Skapa:
+   - Källa: protokoll `HTTPS`, värdnamn `budget.fehre.synology.me`, port `443`, bocka i HSTS.
+   - Destination: protokoll `HTTP`, värdnamn `localhost`, port `5080`.
+   - Fliken *Anpassad rubrik* → *Skapa* → *WebSocket* (krävs för Blazor).
+4. Kontrollpanelen → Säkerhet → Certifikat → Inställningar: välj certifikatet för `budget.fehre.synology.me`.
+5. Routern: vidarebefordra bara port **443** till NAS:en. **Öppna aldrig port 5080** mot internet; den är okrypterad.
+6. Kontrollera att `REQUIRE_TWO_FACTOR=true` är satt och att alla har slagit på tvåstegsverifiering.
+7. Gärna även: Kontrollpanelen → Säkerhet → Skydd → aktivera *Automatisk blockering* och se till att DSM:s egen
+   inloggning (port 5000/5001) inte är vidarebefordrad i routern.
+
+Appen låser dessutom ett konto i några minuter efter fem felaktiga försök med lösenord eller kod.
+
 ## Databasändringar (migreringar)
 
 Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny
@@ -174,6 +208,7 @@ dotnet ef migrations add <Namn> --project src/FamilyBudget.Web --output-dir Data
 - `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 9.0.23 (inloggning och användare)
 - `Microsoft.EntityFrameworkCore.Design` 9.0.23 och verktyget `dotnet-ef` 9.0.23 (bara för att skapa migreringar)
 - `ClosedXML` 0.105.0 (MIT, skapar Excel-filerna)
+- `QRCoder` 1.9.0 (MIT, ritar QR-koden för tvåstegsverifiering)
 - Chart.js 4.6.1 (MIT, grafer). Filen ligger i `wwwroot/lib/chartjs` så appen inte behöver internet.
 
 Pomelo finns ännu inte i en version för EF Core 10, så appen använder EF Core 9 ovanpå .NET 10. Det fungerar fullt ut;

@@ -160,3 +160,10 @@ h1:focus {
     background-color: var(--bs-body-bg);
     z-index: 1;
 }
+
+/* Two-step verification: the QR code fills its white box. */
+.two-factor-qr svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
