@@ -1,0 +1,136 @@
+@page "/setup"
+@attribute [AllowAnonymous]
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Första uppstarten</PageTitle>
+
+<h1>Välkommen till FamilyBudget</h1>
+
+<p>Det finns inga konton ännu. Skapa ditt administratörskonto. Med det kan du sedan lägga upp resten av familjen och budgetgrupperna.</p>
+
+<div class="row">
+    <div class="col-md-6">
+        <StatusMessage Message="@errorMessage" IsError="true" />
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAdministratorAsync" FormName="setup">
+            <DataAnnotationsValidator />
+
+            <div class="mb-3">
+                <label for="displayName" class="form-label">Ditt namn</label>
+                <InputText id="displayName" @bind-Value="Input.DisplayName" class="form-control" autofocus />
+                <ValidationMessage For="() => Input.DisplayName" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="userName" class="form-label">Användarnamn (för inloggning)</label>
+                <InputText id="userName" @bind-Value="Input.UserName" class="form-control" autocomplete="username" />
+                <ValidationMessage For="() => Input.UserName" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="password" class="form-label">Lösenord (minst 8 tecken)</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="form-control" autocomplete="new-password" />
+                <ValidationMessage For="() => Input.Password" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">Upprepa lösenordet</label>
+                <InputText id="confirmPassword" type="password" @bind-Value="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
+                <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+            </div>
+
+            <div class="mb-3">
+                <label for="groupName" class="form-label">Din första budgetgrupp (valfritt)</label>
+                <InputText id="groupName" @bind-Value="Input.FirstBudgetGroupName" class="form-control" placeholder="t.ex. Fredrik och Anna" />
+                <div class="form-text">Du blir medlem i gruppen. Fler grupper kan skapas senare.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Skapa konto</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private string? errorMessage;
+
+    [SupplyParameterFromForm(FormName = "setup")]
+    private SetupInput Input { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new SetupInput();
+
+        // Setup can only be used once: as soon as any account exists, go to login.
+        if (await UserManager.Users.AnyAsync())
+        {
+            Navigation.NavigateTo("/konto/logga-in");
+        }
+    }
+
+    private async Task CreateAdministratorAsync()
+    {
+        // Double-check on submit, in case someone else finished setup meanwhile.
+        if (await UserManager.Users.AnyAsync())
+        {
+            Navigation.NavigateTo("/konto/logga-in");
+            return;
+        }
+
+        if (!await RoleManager.RoleExistsAsync(RoleNames.Administrator))
+        {
+            await RoleManager.CreateAsync(new IdentityRole(RoleNames.Administrator));
+        }
+
+        var administrator = new ApplicationUser
+        {
+            UserName = Input.UserName.Trim(),
+            DisplayName = Input.DisplayName.Trim(),
+        };
+
+        var createResult = await UserManager.CreateAsync(administrator, Input.Password);
+        if (!createResult.Succeeded)
+        {
+            errorMessage = string.Join(" ", createResult.Errors.Select(error => error.Description));
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(administrator, RoleNames.Administrator);
+
+        // Optionally create the first budget group with the administrator as member.
+        if (!string.IsNullOrWhiteSpace(Input.FirstBudgetGroupName))
+        {
+            await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+            var firstBudgetGroup = new BudgetGroup { Name = Input.FirstBudgetGroupName.Trim() };
+            firstBudgetGroup.Memberships.Add(new BudgetGroupMembership { UserId = administrator.Id });
+            databaseContext.BudgetGroups.Add(firstBudgetGroup);
+            await databaseContext.SaveChangesAsync();
+        }
+
+        await SignInManager.SignInAsync(administrator, isPersistent: true);
+        Navigation.NavigateTo("/");
+    }
+
+    private sealed class SetupInput
+    {
+        [Required(ErrorMessage = "Ange ditt namn.")]
+        [StringLength(100)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett användarnamn.")]
+        [StringLength(50)]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Ange ett lösenord.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Compare(nameof(Password), ErrorMessage = "Lösenorden matchar inte.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        [StringLength(100)]
+        public string? FirstBudgetGroupName { get; set; }
+    }
+}

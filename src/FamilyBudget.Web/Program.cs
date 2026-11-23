@@ -1,5 +1,7 @@
 using FamilyBudget.Web.Components;
 using FamilyBudget.Web.Data;
+using FamilyBudget.Web.Security;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +23,45 @@ var mariaDbServerVersion = new MariaDbServerVersion(Version.Parse(mariaDbVersion
 // circuit (browser tab) lives a long time and should not share one DbContext.
 builder.Services.AddDbContextFactory<FamilyBudgetDbContext>(options =>
     options.UseMySql(connectionString, mariaDbServerVersion));
+
+// --- Login (ASP.NET Core Identity) -----------------------------------------
+// Users log in with a user name and password; the session is kept in a cookie.
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme)
+    .AddIdentityCookies();
+builder.Services.AddAuthorization();
+
+builder.Services.AddIdentityCore<ApplicationUser>(options =>
+    {
+        // Family app: long passwords are better than complicated rules.
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireDigit = false;
+        options.Password.RequireLowercase = false;
+
+        // Allow Swedish letters in user names.
+        options.User.AllowedUserNameCharacters =
+            "abcdefghijklmnopqrstuvwxyzåäöABCDEFGHIJKLMNOPQRSTUVWXYZÅÄÖ0123456789-._@+";
+
+        // Lock an account for 5 minutes after 5 wrong passwords in a row.
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    })
+    .AddRoles<IdentityRole>()
+    .AddEntityFrameworkStores<FamilyBudgetDbContext>()
+    .AddSignInManager()
+    .AddErrorDescriber<SwedishIdentityErrorDescriber>()
+    .AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/konto/logga-in";
+    options.AccessDeniedPath = "/konto/ingen-behorighet";
+    // Stay logged in for 30 days of inactivity on a device.
+    options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    options.SlidingExpiration = true;
+});
 
 // --- Data protection ------------------------------------------------------
 // Keys used for cookies/antiforgery are stored on disk so logins survive container
@@ -72,9 +113,18 @@ if (app.Configuration.GetValue<bool>("UseHttpsRedirection"))
     app.UseHttpsRedirection();
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapHealthChecks("/health");
+
+// Logging out is a POST (from the form in the menu) so a link cannot log you out by accident.
+app.MapPost("/konto/logga-ut", async (SignInManager<ApplicationUser> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.LocalRedirect("/konto/logga-in");
+});
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

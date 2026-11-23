@@ -1,0 +1,211 @@
+@page "/admin/grupper/{GroupId:int}"
+@attribute [Authorize(Roles = RoleNames.Administrator)]
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Ändra budgetgrupp</PageTitle>
+
+@if (budgetGroup is null)
+{
+    <h1>Gruppen finns inte</h1>
+    <a href="/admin/grupper">Tillbaka till budgetgrupper</a>
+}
+else
+{
+    <h1>@budgetGroup.Name</h1>
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    <div class="row">
+        <div class="col-md-6">
+            <h2 class="h5 mt-3">Medlemmar</h2>
+            @if (members.Count == 0)
+            {
+                <p class="text-muted">Inga medlemmar ännu.</p>
+            }
+            else
+            {
+                <ul class="list-group mb-3">
+                    @foreach (var member in members)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            @member.DisplayName
+                            @* One small form per member, so each remove button knows who to remove. *@
+                            <form method="post" @formname="@($"remove-member-{member.Id}")" @onsubmit="() => RemoveMemberAsync(member.Id)">
+                                <AntiforgeryToken />
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Ta bort</button>
+                            </form>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (usersNotInGroup.Count > 0)
+            {
+                <EditForm Model="AddMemberInput" method="post" OnValidSubmit="AddMemberAsync" FormName="add-member" class="d-flex gap-2">
+                    <InputSelect @bind-Value="AddMemberInput.UserId" class="form-select">
+                        <option value="">Välj person…</option>
+                        @foreach (var candidate in usersNotInGroup)
+                        {
+                            <option value="@candidate.Id">@candidate.DisplayName</option>
+                        }
+                    </InputSelect>
+                    <button type="submit" class="btn btn-primary text-nowrap">Lägg till</button>
+                </EditForm>
+            }
+
+            <h2 class="h5 mt-4">Byt namn</h2>
+            <EditForm Model="RenameInput" method="post" OnValidSubmit="RenameGroupAsync" FormName="rename-group">
+                <DataAnnotationsValidator />
+                <div class="mb-3">
+                    <InputText @bind-Value="RenameInput.Name" class="form-control" />
+                    <ValidationMessage For="() => RenameInput.Name" class="text-danger" />
+                </div>
+                <button type="submit" class="btn btn-secondary">Spara namn</button>
+            </EditForm>
+
+            <h2 class="h5 mt-4">Ta bort</h2>
+            <form method="post" @formname="delete-group" @onsubmit="DeleteGroupAsync">
+                <AntiforgeryToken />
+                <button type="submit" class="btn btn-outline-danger"
+                        onclick="return confirm('Ta bort gruppen och allt som hör till den? Det går inte att ångra.');">
+                    Ta bort gruppen
+                </button>
+            </form>
+
+            <p class="mt-4"><a href="/admin/grupper">Tillbaka till budgetgrupper</a></p>
+        </div>
+    </div>
+}
+
+@code {
+    private BudgetGroup? budgetGroup;
+    private List<ApplicationUser> members = [];
+    private List<ApplicationUser> usersNotInGroup = [];
+    private string? statusMessage;
+    private bool isError;
+
+    [Parameter]
+    public int GroupId { get; set; }
+
+    [SupplyParameterFromForm(FormName = "add-member")]
+    private AddMemberFormInput AddMemberInput { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "rename-group")]
+    private RenameGroupInput RenameInput { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AddMemberInput ??= new AddMemberFormInput();
+        await LoadGroupAsync();
+        RenameInput ??= new RenameGroupInput { Name = budgetGroup?.Name ?? string.Empty };
+    }
+
+    private async Task LoadGroupAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        budgetGroup = await databaseContext.BudgetGroups
+            .Include(group => group.Memberships)
+            .ThenInclude(membership => membership.User)
+            .FirstOrDefaultAsync(group => group.Id == GroupId);
+
+        if (budgetGroup is null)
+        {
+            return;
+        }
+
+        members = budgetGroup.Memberships
+            .Select(membership => membership.User)
+            .OrderBy(user => user.DisplayName)
+            .ToList();
+
+        var memberIds = members.Select(member => member.Id).ToList();
+        usersNotInGroup = await databaseContext.Users
+            .Where(user => !memberIds.Contains(user.Id))
+            .OrderBy(user => user.DisplayName)
+            .ToListAsync();
+    }
+
+    private async Task AddMemberAsync()
+    {
+        if (string.IsNullOrEmpty(AddMemberInput.UserId))
+        {
+            statusMessage = "Välj en person att lägga till.";
+            isError = true;
+            return;
+        }
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        var alreadyMember = await databaseContext.BudgetGroupMemberships
+            .AnyAsync(membership => membership.BudgetGroupId == GroupId && membership.UserId == AddMemberInput.UserId);
+
+        if (!alreadyMember)
+        {
+            databaseContext.BudgetGroupMemberships.Add(new BudgetGroupMembership
+            {
+                BudgetGroupId = GroupId,
+                UserId = AddMemberInput.UserId,
+            });
+            await databaseContext.SaveChangesAsync();
+        }
+
+        statusMessage = "Medlemmen är tillagd.";
+        isError = false;
+        AddMemberInput = new AddMemberFormInput();
+        await LoadGroupAsync();
+    }
+
+    private async Task RemoveMemberAsync(string userId)
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        await databaseContext.BudgetGroupMemberships
+            .Where(membership => membership.BudgetGroupId == GroupId && membership.UserId == userId)
+            .ExecuteDeleteAsync();
+
+        statusMessage = "Medlemmen är borttagen ur gruppen.";
+        isError = false;
+        await LoadGroupAsync();
+    }
+
+    private async Task RenameGroupAsync()
+    {
+        var newName = RenameInput.Name.Trim();
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        if (await databaseContext.BudgetGroups.AnyAsync(group => group.Name == newName && group.Id != GroupId))
+        {
+            statusMessage = $"Det finns redan en grupp som heter '{newName}'.";
+            isError = true;
+            return;
+        }
+
+        await databaseContext.BudgetGroups
+            .Where(group => group.Id == GroupId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(group => group.Name, newName));
+
+        statusMessage = "Namnet är sparat.";
+        isError = false;
+        await LoadGroupAsync();
+    }
+
+    private async Task DeleteGroupAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        // Memberships are removed automatically (cascade delete).
+        await databaseContext.BudgetGroups.Where(group => group.Id == GroupId).ExecuteDeleteAsync();
+        Navigation.NavigateTo("/admin/grupper");
+    }
+
+    private sealed class AddMemberFormInput
+    {
+        public string UserId { get; set; } = string.Empty;
+    }
+
+    private sealed class RenameGroupInput
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(100)]
+        public string Name { get; set; } = string.Empty;
+    }
+}

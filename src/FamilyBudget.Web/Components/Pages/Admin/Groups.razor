@@ -1,0 +1,105 @@
+@page "/admin/grupper"
+@attribute [Authorize(Roles = RoleNames.Administrator)]
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Budgetgrupper</PageTitle>
+
+<h1>Budgetgrupper</h1>
+
+<p>Varje budgetgrupp har en egen budget. Bara gruppens medlemmar ser dess fakturor och inkomster.</p>
+
+<StatusMessage Message="@statusMessage" IsError="@isError" />
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Grupp</th>
+            <th>Medlemmar</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var groupRow in groupRows)
+        {
+            <tr>
+                <td>@groupRow.Name</td>
+                <td>@(groupRow.MemberNames.Count == 0 ? "–" : string.Join(", ", groupRow.MemberNames))</td>
+                <td><a href="/admin/grupper/@groupRow.GroupId">Ändra</a></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2 class="h4 mt-4">Ny budgetgrupp</h2>
+
+<div class="row">
+    <div class="col-md-6">
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateGroupAsync" FormName="create-group">
+            <DataAnnotationsValidator />
+            <div class="mb-3">
+                <label for="groupName" class="form-label">Namn</label>
+                <InputText id="groupName" @bind-Value="Input.Name" class="form-control" placeholder="t.ex. Kalle" />
+                <ValidationMessage For="() => Input.Name" class="text-danger" />
+            </div>
+            <button type="submit" class="btn btn-primary">Skapa</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private List<GroupRow> groupRows = [];
+    private string? statusMessage;
+    private bool isError;
+
+    [SupplyParameterFromForm(FormName = "create-group")]
+    private CreateGroupInput Input { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new CreateGroupInput();
+        await LoadGroupsAsync();
+    }
+
+    private async Task LoadGroupsAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        groupRows = await databaseContext.BudgetGroups
+            .OrderBy(group => group.Name)
+            .Select(group => new GroupRow(
+                group.Id,
+                group.Name,
+                group.Memberships.Select(membership => membership.User.DisplayName).OrderBy(name => name).ToList()))
+            .ToListAsync();
+    }
+
+    private async Task CreateGroupAsync()
+    {
+        var groupName = Input.Name.Trim();
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        if (await databaseContext.BudgetGroups.AnyAsync(group => group.Name == groupName))
+        {
+            statusMessage = $"Det finns redan en grupp som heter '{groupName}'.";
+            isError = true;
+            return;
+        }
+
+        databaseContext.BudgetGroups.Add(new BudgetGroup { Name = groupName });
+        await databaseContext.SaveChangesAsync();
+
+        statusMessage = $"Gruppen '{groupName}' är skapad. Klicka på Ändra för att lägga till medlemmar.";
+        isError = false;
+        Input = new CreateGroupInput();
+        await LoadGroupsAsync();
+    }
+
+    private sealed record GroupRow(int GroupId, string Name, List<string> MemberNames);
+
+    private sealed class CreateGroupInput
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(100)]
+        public string Name { get; set; } = string.Empty;
+    }
+}

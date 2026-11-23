@@ -8,12 +8,49 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Hem
-            </NavLink>
-        </div>
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Hem
+                    </NavLink>
+                </div>
 
+                @* Administration links are only shown to administrators. *@
+                <AuthorizeView Roles="@RoleNames.Administrator" Context="administratorContext">
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="admin/anvandare">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Användare
+                        </NavLink>
+                    </div>
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="admin/grupper">
+                            <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Budgetgrupper
+                        </NavLink>
+                    </div>
+                </AuthorizeView>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="konto/byt-losenord">
+                        <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Byt lösenord
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <form action="konto/logga-ut" method="post">
+                        <button type="submit" class="nav-link btn btn-link text-start w-100">
+                            <span class="bi bi-arrow-bar-left-nav-menu" aria-hidden="true"></span> Logga ut (@context.User.Identity?.Name)
+                        </button>
+                    </form>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="konto/logga-in">
+                        <span class="bi bi-person-nav-menu" aria-hidden="true"></span> Logga in
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
     </nav>
 </div>
-
