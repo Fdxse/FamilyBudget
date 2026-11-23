@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# FamilyBudget on Synology NAS
+# Two containers: the web app and a MariaDB database.
+# All persistent data lives under ${DATA_ROOT} (a shared folder on the NAS).
+# Settings are read from the .env file next to this file (copy .env.example).
+# ---------------------------------------------------------------------------
+name: familybudget
+
+services:
+  database:
+    image: mariadb:11.4
+    container_name: familybudget-database
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: familybudget
+      MARIADB_USER: familybudget
+      MARIADB_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${DATABASE_ROOT_PASSWORD:?Set DATABASE_ROOT_PASSWORD in .env}
+      TZ: ${TIMEZONE:-Europe/Stockholm}
+    volumes:
+      # Database files on the NAS share.
+      - ${DATA_ROOT:?Set DATA_ROOT in .env}/mariadb:/var/lib/mysql
+    healthcheck:
+      # healthcheck.sh ships with the official MariaDB image.
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # The database is not exposed outside Docker; only the app talks to it.
+
+  web:
+    build:
+      context: .
+      args:
+        APP_GIT_COMMIT: ${APP_GIT_COMMIT:-unknown}
+    image: familybudget-web:latest
+    container_name: familybudget-web
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__FamilyBudget: "Server=database;Port=3306;Database=familybudget;User=familybudget;Password=${DATABASE_PASSWORD}"
+      Database__MariaDbVersion: "11.4"
+      DataProtection__KeyFolder: /keys
+      TZ: ${TIMEZONE:-Europe/Stockholm}
+    volumes:
+      # Keys that protect login cookies, kept so users stay logged in after restarts.
+      - ${DATA_ROOT}/keys:/keys
+    ports:
+      # NAS port -> container port. Point Synology's reverse proxy at this port.
+      - "${APP_PORT:-5080}:8080"

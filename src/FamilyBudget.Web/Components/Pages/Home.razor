@@ -1,0 +1,40 @@
+@page "/"
+@using FamilyBudget.Web.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>FamilyBudget</PageTitle>
+
+<h1>FamilyBudget</h1>
+
+<p>Appen är igång.</p>
+
+@* Simple status line so you can see at a glance that the NAS setup works end to end. *@
+<p>
+    Databas:
+    @if (isDatabaseReachable)
+    {
+        <span class="text-success">ansluten</span>
+    }
+    else
+    {
+        <span class="text-danger">ej nåbar</span>
+    }
+</p>
+
+<p class="text-muted small">Version: @applicationVersion</p>
+
+@code {
+    private bool isDatabaseReachable;
+    private string applicationVersion = "okänd";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check the database connection once when the page loads.
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        isDatabaseReachable = await databaseContext.Database.CanConnectAsync();
+
+        // The Git commit is passed into the image at build time (see Dockerfile / update script).
+        applicationVersion = Environment.GetEnvironmentVariable("APP_GIT_COMMIT") ?? "lokal utveckling";
+    }
+}
