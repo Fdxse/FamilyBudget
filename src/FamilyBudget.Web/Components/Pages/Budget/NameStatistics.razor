@@ -1,0 +1,341 @@
+@page "/grupp/{GroupId:int}/statistik/namn"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject BudgetOutcomeCalculator OutcomeCalculator
+@inject NavigationManager Navigation
+
+<PageTitle>Statistik per namn</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="statistik" />
+    <StatisticsNav GroupId="GroupId" ActiveView="namn" />
+
+    @* Where in the drill-down we are: Hela perioden › 2016 › Juni 2016 *@
+    <nav aria-label="Period">
+        <ol class="breadcrumb mb-2">
+            <li class="breadcrumb-item @(Year is null ? "active" : "")">
+                @if (Year is null) { <span>Hela perioden</span> } else { <a href="@PageLink(null, null, SelectedName)">Hela perioden</a> }
+            </li>
+            @if (Year is not null)
+            {
+                <li class="breadcrumb-item @(Month is null ? "active" : "")">
+                    @if (Month is null) { <span>@Year</span> } else { <a href="@PageLink(Year, null, SelectedName)">@Year</a> }
+                </li>
+            }
+            @if (Year is not null && Month is not null)
+            {
+                <li class="breadcrumb-item active">@BudgetTexts.MonthTitle(Year.Value, Month.Value)</li>
+            }
+        </ol>
+    </nav>
+
+    @* Expenses or incomes *@
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Visa utgifter eller inkomster">
+            <a class="btn @(ShownKind == EntryKind.Expense ? "btn-secondary" : "btn-outline-secondary")" href="@PageLink(Year, Month, null, EntryKind.Expense)">Utgifter</a>
+            <a class="btn @(ShownKind == EntryKind.Income ? "btn-secondary" : "btn-outline-secondary")" href="@PageLink(Year, Month, null, EntryKind.Income)">Inkomster</a>
+        </div>
+        @if (SelectedName is not null)
+        {
+            <span class="ms-2">Visar <strong>@selectedDisplayName</strong></span>
+            <a class="btn btn-sm btn-link" href="@PageLink(Year, Month, null)">Visa alla namn</a>
+        }
+    </div>
+
+    @if (periodItems.Count == 0)
+    {
+        <p class="text-muted">Inget registrerat för den här perioden.</p>
+    }
+
+    @* Chart and drill-down buttons for the level below: years for the whole period, months for a year. *@
+    @if (Month is null && subPeriods.Count > 0)
+    {
+        <h2 class="h5">@ChartTitle()</h2>
+        @if (periodChart is not null)
+        {
+            <BudgetChart Definition="periodChart" Height="280" Description="@ChartTitle()" />
+        }
+        <div class="d-flex flex-wrap gap-1 mt-2 mb-4" aria-label="Borra ner">
+            @foreach (var subPeriod in subPeriods)
+            {
+                <a class="btn btn-sm btn-outline-secondary @(subPeriod.Amount == 0 ? "disabled" : "")"
+                   href="@PageLink(subPeriod.Year, subPeriod.Month, SelectedName)"
+                   title="@BudgetTexts.Money(subPeriod.Amount)">@subPeriod.Label</a>
+            }
+        </div>
+    }
+
+    @if (SelectedName is null)
+    {
+        @* One row per name, summed over the period. *@
+        @if (nameRows.Count > 0)
+        {
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h2 class="h5 mb-0">Per namn</h2>
+                <input class="form-control form-control-sm w-auto" placeholder="Sök namn" aria-label="Sök namn"
+                       @bind="searchText" @bind:event="oninput" />
+            </div>
+            <p class="form-text">Klicka på ett namn för att se hur det har utvecklats över tiden.</p>
+
+            var filteredRows = FilteredNameRows();
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Namn</th>
+                            <th>Kategori</th>
+                            <th class="text-end">Antal</th>
+                            <th class="text-end">Summa</th>
+                            <th class="text-end">Snitt</th>
+                            <th class="text-end">Andel</th>
+                            <th class="text-end">Senast</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var nameRow in filteredRows.Take(showAllNames ? int.MaxValue : DefaultRowCount))
+                        {
+                            <tr>
+                                <td><a href="@PageLink(Year, Month, nameRow.NameKey)">@nameRow.DisplayName</a></td>
+                                <td>@nameRow.CategoryName</td>
+                                <td class="text-end">@nameRow.Count</td>
+                                <td class="text-end">@BudgetTexts.WholeKronor(nameRow.Total)</td>
+                                <td class="text-end">@BudgetTexts.WholeKronor(nameRow.Total / nameRow.Count)</td>
+                                <td class="text-end text-nowrap">@((periodTotal == 0 ? 0 : nameRow.Total / periodTotal * 100).ToString("0.0")) %</td>
+                                <td class="text-end">@BudgetTexts.Date(nameRow.LastDate)</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-semibold">
+                            <td colspan="2">Totalt (@filteredRows.Count namn)</td>
+                            <td class="text-end">@filteredRows.Sum(nameRow => nameRow.Count)</td>
+                            <td class="text-end">@BudgetTexts.WholeKronor(filteredRows.Sum(nameRow => nameRow.Total))</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            @if (!showAllNames && filteredRows.Count > DefaultRowCount)
+            {
+                <button class="btn btn-sm btn-outline-secondary mb-4" @onclick="() => showAllNames = true">Visa alla @filteredRows.Count namn</button>
+            }
+        }
+    }
+    else if (periodItems.Count > 0)
+    {
+        @* Every occurrence of the chosen name in the period. *@
+        <h2 class="h5">Alla tillfällen</h2>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th>Namn</th>
+                        <th>Kategori</th>
+                        <th class="text-end">Belopp</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in periodItems.OrderByDescending(item => item.DueDate))
+                    {
+                        <tr>
+                            <td>@BudgetTexts.Date(item.DueDate)</td>
+                            <td><a href="@($"grupp/{GroupId}/poster/{item.EntryId}")">@item.EntryName</a></td>
+                            <td>@item.CategoryName</td>
+                            <td class="text-end">@BudgetTexts.Money(item.EffectiveAmount)</td>
+                            <td class="text-muted small">@(item.IsPaid ? "" : "ej betald")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-semibold">
+                        <td colspan="3">Totalt (@periodItems.Count st)</td>
+                        <td class="text-end">@BudgetTexts.Money(periodTotal)</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    // Number of names shown before "Visa alla" is pressed.
+    private const int DefaultRowCount = 50;
+
+    private bool isLoading = true;
+    private BudgetGroup? budgetGroup;
+
+    // Loaded once per group; the drill-down only filters these in memory.
+    private int? loadedGroupId;
+    private List<OutcomeItem> allItems = [];
+    private int firstYear;
+    private int lastYear;
+
+    // What is shown for the current address.
+    private List<OutcomeItem> periodItems = [];
+    private decimal periodTotal;
+    private List<NameRow> nameRows = [];
+    private List<SubPeriod> subPeriods = [];
+    private ChartDefinition? periodChart;
+    private string? selectedDisplayName;
+    private string searchText = string.Empty;
+    private bool showAllNames;
+
+    [Parameter] public int GroupId { get; set; }
+
+    /// <summary>Chosen year, or null for the whole period.</summary>
+    [SupplyParameterFromQuery(Name = "ar")] public int? Year { get; set; }
+
+    /// <summary>Chosen month (1–12) within <see cref="Year"/>, or null for the whole year.</summary>
+    [SupplyParameterFromQuery(Name = "manad")] public int? Month { get; set; }
+
+    /// <summary>Chosen name (normalized key), or null to list all names.</summary>
+    [SupplyParameterFromQuery(Name = "namn")] public string? SelectedName { get; set; }
+
+    /// <summary>"inkomst" shows incomes; anything else shows expenses.</summary>
+    [SupplyParameterFromQuery(Name = "typ")] public string? KindText { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    private EntryKind ShownKind => KindText == "inkomst" ? EntryKind.Income : EntryKind.Expense;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A month only makes sense together with a year.
+        if (Year is null || Month is not (>= 1 and <= 12))
+        {
+            Month = null;
+        }
+
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            if (loadedGroupId != GroupId)
+            {
+                (allItems, firstYear, lastYear) = await OutcomeCalculator.GetAllItemsAsync(GroupId);
+                loadedGroupId = GroupId;
+            }
+            BuildView();
+        }
+        isLoading = false;
+    }
+
+    /// <summary>Filters the loaded items to the chosen period, kind and name and builds tables and chart.</summary>
+    private void BuildView()
+    {
+        showAllNames = false;
+
+        var kindItems = allItems.Where(item => item.Kind == ShownKind).ToList();
+        if (SelectedName is not null)
+        {
+            kindItems = kindItems.Where(item => NameKey(item.EntryName) == SelectedName).ToList();
+            selectedDisplayName = MostCommon(kindItems.Select(item => item.EntryName.Trim())) ?? SelectedName;
+        }
+
+        periodItems = kindItems.Where(item => IsInChosenPeriod(item.DueDate)).ToList();
+        periodTotal = periodItems.Sum(item => item.EffectiveAmount);
+
+        // Same name with different spelling or spacing ("SEB  bolån" / "SEB Bolån") ends up on one row.
+        nameRows = periodItems
+            .GroupBy(item => NameKey(item.EntryName))
+            .Select(nameGroup => new NameRow(
+                nameGroup.Key,
+                MostCommon(nameGroup.Select(item => item.EntryName.Trim()))!,
+                MostCommon(nameGroup.Select(item => item.CategoryName ?? "Utan kategori"))!,
+                nameGroup.Count(),
+                nameGroup.Sum(item => item.EffectiveAmount),
+                nameGroup.Max(item => item.DueDate)))
+            .OrderByDescending(nameRow => nameRow.Total)
+            .ToList();
+
+        BuildSubPeriods(kindItems);
+    }
+
+    /// <summary>Totals for the level below the current one, used for the chart and the drill-down buttons.</summary>
+    private void BuildSubPeriods(List<OutcomeItem> kindItems)
+    {
+        if (Year is null)
+        {
+            // Whole period: one entry per year.
+            subPeriods = Enumerable.Range(firstYear, lastYear - firstYear + 1)
+                .Select(year => new SubPeriod(year.ToString(), year, null,
+                    kindItems.Where(item => item.DueDate.Year == year).Sum(item => item.EffectiveAmount)))
+                .ToList();
+        }
+        else if (Month is null)
+        {
+            // One year: one entry per month.
+            subPeriods = Enumerable.Range(1, 12)
+                .Select(month => new SubPeriod(BudgetTexts.ShortMonth(month), Year, month,
+                    kindItems.Where(item => item.DueDate.Year == Year && item.DueDate.Month == month).Sum(item => item.EffectiveAmount)))
+                .ToList();
+        }
+        else
+        {
+            // A single month is the lowest level.
+            subPeriods = [];
+        }
+
+        periodChart = subPeriods.Count == 0 ? null : new ChartDefinition
+        {
+            Labels = subPeriods.Select(subPeriod => subPeriod.Label).ToList(),
+            Datasets =
+            [
+                new ChartDataset(selectedDisplayName ?? (ShownKind == EntryKind.Income ? "Inkomster" : "Utgifter"),
+                    subPeriods.Select(subPeriod => subPeriod.Amount).ToList(),
+                    ShownKind == EntryKind.Income ? ChartColors.Income : ChartColors.Expense),
+            ],
+        };
+    }
+
+    private bool IsInChosenPeriod(DateOnly dueDate) =>
+        (Year is null || dueDate.Year == Year) && (Month is null || dueDate.Month == Month);
+
+    private List<NameRow> FilteredNameRows() =>
+        string.IsNullOrWhiteSpace(searchText)
+            ? nameRows
+            : nameRows.Where(nameRow => nameRow.DisplayName.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private string ChartTitle()
+    {
+        var subject = selectedDisplayName ?? (ShownKind == EntryKind.Income ? "Inkomster" : "Utgifter");
+        return Year is null ? $"{subject} per år" : $"{subject} per månad {Year}";
+    }
+
+    /// <summary>Address of this page for a period, name and kind. Kind defaults to the one shown now.</summary>
+    private string PageLink(int? year, int? month, string? nameKey, EntryKind? kind = null)
+    {
+        var shownKind = kind ?? ShownKind;
+        return Navigation.GetUriWithQueryParameters($"grupp/{GroupId}/statistik/namn", new Dictionary<string, object?>
+        {
+            ["ar"] = year,
+            ["manad"] = month,
+            ["namn"] = nameKey,
+            ["typ"] = shownKind == EntryKind.Income ? "inkomst" : null,
+        });
+    }
+
+    /// <summary>Lower case with single spaces, so small spelling differences count as the same name.</summary>
+    private static string NameKey(string entryName) =>
+        string.Join(' ', entryName.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+
+    /// <summary>The value that occurs most often, e.g. the usual spelling of a name.</summary>
+    private static string? MostCommon(IEnumerable<string> values) =>
+        values.GroupBy(value => value).OrderByDescending(valueGroup => valueGroup.Count()).Select(valueGroup => valueGroup.Key).FirstOrDefault();
+
+    private sealed record NameRow(string NameKey, string DisplayName, string CategoryName, int Count, decimal Total, DateOnly LastDate);
+
+    private sealed record SubPeriod(string Label, int? Year, int? Month, decimal Amount);
+}

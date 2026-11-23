@@ -1,0 +1,16 @@
+@* Switches between the statistics views under the Statistik tab. *@
+<ul class="nav nav-pills nav-sm mb-3">
+    <li class="nav-item">
+        <a class="nav-link py-1 @(ActiveView == "oversikt" ? "active" : "")" href="@($"grupp/{GroupId}/statistik")">Översikt</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link py-1 @(ActiveView == "namn" ? "active" : "")" href="@($"grupp/{GroupId}/statistik/namn")">Per namn</a>
+    </li>
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public int GroupId { get; set; }
+
+    /// <summary>Which view is highlighted: oversikt or namn.</summary>
+    [Parameter, EditorRequired] public string ActiveView { get; set; } = string.Empty;
+}

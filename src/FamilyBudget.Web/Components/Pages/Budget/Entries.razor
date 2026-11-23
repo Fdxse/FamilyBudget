@@ -22,20 +22,6 @@ else
         <a class="btn btn-success" href="@($"grupp/{GroupId}/poster/ny?typ=inkomst")">+ Ny inkomst</a>
     </div>
 
-    @* Quick add from templates *@
-    @if (templates.Count > 0)
-    {
-        <div class="mb-4">
-            <span class="text-muted me-2">Lägg till från mall:</span>
-            @foreach (var template in templates)
-            {
-                <a class="btn btn-sm btn-outline-secondary me-1 mb-1" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">
-                    + @template.Name
-                </a>
-            }
-        </div>
-    }
-
     <div class="btn-group mb-3" role="group" aria-label="Visa">
         <button class="btn btn-sm @(showEnded ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => showEnded = false">Aktiva</button>
         <button class="btn btn-sm @(showEnded ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => showEnded = true">Alla, även avslutade</button>
@@ -46,6 +32,22 @@ else
         var rowsOfKind = entryRows.Where(entryRow => entryRow.Entry.Kind == kind && (showEnded || entryRow.NextDueDate is not null)).ToList();
 
         <h2 class="h5 mt-3">@(kind == EntryKind.Income ? "Inkomster" : "Fakturor och utgifter")</h2>
+
+        @* Quick add from templates of this kind. Colors match the "Ny inkomst" (green) and "Ny faktura/utgift" (blue) buttons. *@
+        var templatesOfKind = templates.Where(template => template.Kind == kind).ToList();
+        @if (templatesOfKind.Count > 0)
+        {
+            <div class="mb-2">
+                <span class="text-muted small me-2">Lägg till från mall:</span>
+                @foreach (var template in templatesOfKind)
+                {
+                    <a class="btn btn-sm @(kind == EntryKind.Income ? "btn-outline-success" : "btn-outline-primary") me-1 mb-1"
+                       href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">
+                        + @template.Name
+                    </a>
+                }
+            </div>
+        }
         @if (rowsOfKind.Count == 0)
         {
             <p class="text-muted">Inga ännu.</p>
