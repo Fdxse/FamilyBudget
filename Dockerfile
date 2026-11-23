@@ -13,11 +13,16 @@ COPY src/FamilyBudget.Web/FamilyBudget.Web.csproj src/FamilyBudget.Web/
 RUN dotnet restore src/FamilyBudget.Web/FamilyBudget.Web.csproj
 
 # Copy the rest of the source and publish a Release build.
+# Restore runs again here (no --no-restore): the SDK only adds the package with Blazor's own
+# scripts (_framework/blazor.web.js) once it sees the .razor files, which the first restore
+# above cannot. Without it the pages render but never become interactive.
 COPY src/ src/
 RUN dotnet publish src/FamilyBudget.Web/FamilyBudget.Web.csproj \
     --configuration Release \
-    --no-restore \
     --output /app/publish
+
+# Stop the build if Blazor's script is missing, instead of shipping a half-working app.
+RUN test -f /app/publish/wwwroot/_framework/blazor.web.js
 
 # Files checked out on a Synology share can carry mode 000 (access is granted by ACLs,
 # which Docker does not copy). Make the published files readable for the non-root
