@@ -55,6 +55,19 @@ echo "==> Making sure data folders exist under $DATA_ROOT"
 $sudo_prefix mkdir -p "$DATA_ROOT/mariadb" "$DATA_ROOT/keys"
 # The web app runs as the non-root user 1654 from the official .NET image.
 $sudo_prefix chown 1654:1654 "$DATA_ROOT/keys"
+# MariaDB in its container runs as user 999.
+$sudo_prefix chown 999:999 "$DATA_ROOT/mariadb"
+
+# Synology shared folders carry ACLs that are inherited by new folders. The ACLs take
+# precedence over normal Unix permissions, so the container users (999 and 1654) get
+# "Permission denied" even on rwx folders. Strip the ACLs from our two data folders only.
+synology_acl_tool="$(command -v synoacltool || echo /usr/syno/bin/synoacltool)"
+if [[ -x "$synology_acl_tool" ]]; then
+    for data_folder in "$DATA_ROOT/mariadb" "$DATA_ROOT/keys"; do
+        # Ignore errors: a folder without ACL makes the tool exit non-zero.
+        $sudo_prefix "$synology_acl_tool" -del "$data_folder" >/dev/null 2>&1 || true
+    done
+fi
 
 echo "==> Building web image"
 APP_GIT_COMMIT="$current_commit" $compose_command build --pull web

@@ -26,6 +26,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      # The very first start initializes the database, which can take a while on a NAS.
+      start_period: 60s
     # The database is not exposed outside Docker; only the app talks to it.
 
   web:
