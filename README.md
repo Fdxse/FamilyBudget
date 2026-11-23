@@ -108,6 +108,12 @@ Klicka på en budgetgrupp på startsidan. Där finns fyra flikar:
 - **Mallar:** färdiga utgångspunkter, t.ex. "Lön" med vanligt belopp och dag. *Lägg till* öppnar en ifylld ny post.
 - **Kategorier:** varje grupp har egna kategorier. Standardkategorier skapas första gången gruppen öppnas.
 
+## Skapa månad
+
+Knappen **Skapa nästa månad** (under Fakturor och inkomster) eller **Skapa poster för månaden** (i månadsvyn)
+föreslår månadens poster utifrån mallarna och förra månadens engångsposter. Justera belopp och datum, bocka ur
+det som inte ska med och spara, så skapas alla poster på en gång. Poster som redan finns i månaden är urbockade.
+
 ## År, budget och statistik
 
 - **År**: inkomster, utgifter och netto per månad med graf, och en tabell per kategori och månad.

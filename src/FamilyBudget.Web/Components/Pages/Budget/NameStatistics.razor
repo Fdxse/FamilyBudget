@@ -240,7 +240,7 @@ else
         var kindItems = allItems.Where(item => item.Kind == ShownKind).ToList();
         if (SelectedName is not null)
         {
-            kindItems = kindItems.Where(item => NameKey(item.EntryName) == SelectedName).ToList();
+            kindItems = kindItems.Where(item => BudgetTexts.NameKey(item.EntryName) == SelectedName).ToList();
             selectedDisplayName = MostCommon(kindItems.Select(item => item.EntryName.Trim())) ?? SelectedName;
         }
 
@@ -249,7 +249,7 @@ else
 
         // Same name with different spelling or spacing ("SEB  bolån" / "SEB Bolån") ends up on one row.
         nameRows = periodItems
-            .GroupBy(item => NameKey(item.EntryName))
+            .GroupBy(item => BudgetTexts.NameKey(item.EntryName))
             .Select(nameGroup => new NameRow(
                 nameGroup.Key,
                 MostCommon(nameGroup.Select(item => item.EntryName.Trim()))!,
@@ -326,10 +326,6 @@ else
             ["typ"] = shownKind == EntryKind.Income ? "inkomst" : null,
         });
     }
-
-    /// <summary>Lower case with single spaces, so small spelling differences count as the same name.</summary>
-    private static string NameKey(string entryName) =>
-        string.Join(' ', entryName.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
 
     /// <summary>The value that occurs most often, e.g. the usual spelling of a name.</summary>
     private static string? MostCommon(IEnumerable<string> values) =>
