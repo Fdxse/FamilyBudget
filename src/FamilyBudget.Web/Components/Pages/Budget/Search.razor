@@ -1,0 +1,297 @@
+@page "/grupp/{GroupId:int}/sok"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Sök</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="sok" />
+
+    @* Text and amount are separate fields, so "500" in the text field finds names like "Hyra 500",
+       while the amount field only looks at amounts. *@
+    @* method="get" with named fields: if someone searches before the page is fully loaded,
+       the browser still sends the search in the address and it works the same. *@
+    <form class="row g-2 align-items-end mb-3" method="get" @onsubmit="StartSearch" @onsubmit:preventDefault>
+        <div class="col-12 col-md-4">
+            <label for="searchText" class="form-label">Text</label>
+            <input id="searchText" name="text" class="form-control" @bind="typedText" placeholder="Namn, anteckning eller kategori" autocomplete="off" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label for="searchAmountFrom" class="form-label">Belopp</label>
+            <input id="searchAmountFrom" name="belopp" class="form-control" @bind="typedAmountFrom" inputmode="decimal" placeholder="t.ex. 1 250" autocomplete="off" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label for="searchAmountTo" class="form-label">till <span class="text-muted">(valfritt)</span></label>
+            <input id="searchAmountTo" name="till" class="form-control" @bind="typedAmountTo" inputmode="decimal" autocomplete="off" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label for="searchKind" class="form-label">Typ</label>
+            <select id="searchKind" name="typ" class="form-select" @bind="selectedKind">
+                <option value="">Alla</option>
+                <option value="utgift">Utgifter</option>
+                <option value="inkomst">Inkomster</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary flex-grow-1">Sök</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="Clear" title="Rensa">✕</button>
+        </div>
+        <div class="col-12 form-text mt-1">
+            Ett belopp ger exakt träff. Fyll i båda beloppsfälten för att söka i ett intervall.
+            Både förväntat och faktiskt betalt belopp räknas.
+        </div>
+    </form>
+
+    <StatusMessage Message="@inputError" IsError="true" />
+
+    @if (hasSearched && inputError is null)
+    {
+        @if (resultRows.Count == 0)
+        {
+            <p class="text-muted">Inga träffar.</p>
+        }
+        else
+        {
+            <p>
+                @totalHitCount träffar@(isTruncated ? $" (visar de {MaxRows} senaste, gör sökningen snävare för att se fler)" : "").
+                Summa utgifter <strong>@BudgetTexts.Money(expenseTotal)</strong>,
+                inkomster <strong>@BudgetTexts.Money(incomeTotal)</strong>.
+            </p>
+            <div class="table-responsive">
+                <table class="table-cards table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Namn</th>
+                            <th>Kategori</th>
+                            <th>Typ</th>
+                            <th class="text-end">Belopp</th>
+                            <th>Anteckning</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var resultRow in resultRows)
+                        {
+                            <tr>
+                                <td data-label="Datum" class="text-nowrap">@BudgetTexts.Date(resultRow.Date)</td>
+                                <td data-card-title><a href="@($"grupp/{GroupId}/poster/{resultRow.EntryId}")">@resultRow.Name</a></td>
+                                <td data-label="Kategori">@resultRow.CategoryName</td>
+                                <td data-label="Typ">
+                                    <span class="badge @(resultRow.Kind == EntryKind.Income ? "text-bg-success" : "text-bg-primary")">@BudgetTexts.Kind(resultRow.Kind)</span>
+                                    @if (resultRow.Periodicity != Periodicity.Once)
+                                    {
+                                        <span class="text-muted small ms-1">@BudgetTexts.Periodicity(resultRow.Periodicity)</span>
+                                    }
+                                </td>
+                                <td data-label="Belopp" class="text-end text-nowrap">
+                                    @BudgetTexts.Money(resultRow.Amount)
+                                    @if (resultRow.IsPaid)
+                                    {
+                                        <span class="text-success" title="Betald">✓</span>
+                                    }
+                                </td>
+                                <td data-label="Anteckning" class="small">@resultRow.Note</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    // More rows than this makes the page slow on a phone; the newest are shown.
+    private const int MaxRows = 500;
+
+    private bool isLoading = true;
+    private BudgetGroup? budgetGroup;
+
+    // What is typed in the form right now.
+    private string typedText = string.Empty;
+    private string typedAmountFrom = string.Empty;
+    private string typedAmountTo = string.Empty;
+    private string selectedKind = string.Empty;
+
+    private bool hasSearched;
+    private bool isTruncated;
+    private string? inputError;
+    private List<ResultRow> resultRows = [];
+
+    // Count and sums cover every hit, also those beyond MaxRows that are not shown.
+    private int totalHitCount;
+    private decimal expenseTotal;
+    private decimal incomeTotal;
+
+    [Parameter] public int GroupId { get; set; }
+
+    // The search lives in the address, so the browser's back button and bookmarks work.
+    [SupplyParameterFromQuery(Name = "text")] public string? QueryText { get; set; }
+    [SupplyParameterFromQuery(Name = "belopp")] public string? QueryAmountFrom { get; set; }
+    [SupplyParameterFromQuery(Name = "till")] public string? QueryAmountTo { get; set; }
+    [SupplyParameterFromQuery(Name = "typ")] public string? QueryKind { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+
+        typedText = QueryText ?? string.Empty;
+        typedAmountFrom = QueryAmountFrom ?? string.Empty;
+        typedAmountTo = QueryAmountTo ?? string.Empty;
+        selectedKind = QueryKind ?? string.Empty;
+
+        if (budgetGroup is not null)
+        {
+            await RunSearchAsync();
+        }
+        isLoading = false;
+    }
+
+    /// <summary>Puts the form values in the address; that triggers the search above.</summary>
+    private void StartSearch()
+    {
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(new Dictionary<string, object?>
+        {
+            ["text"] = string.IsNullOrWhiteSpace(typedText) ? null : typedText.Trim(),
+            ["belopp"] = string.IsNullOrWhiteSpace(typedAmountFrom) ? null : typedAmountFrom.Trim(),
+            ["till"] = string.IsNullOrWhiteSpace(typedAmountTo) ? null : typedAmountTo.Trim(),
+            ["typ"] = string.IsNullOrEmpty(selectedKind) ? null : selectedKind,
+        }));
+    }
+
+    private void Clear() => Navigation.NavigateTo($"grupp/{GroupId}/sok");
+
+    private async Task RunSearchAsync()
+    {
+        inputError = null;
+        resultRows = [];
+        isTruncated = false;
+
+        // Each word must be found somewhere: "el vattenfall" finds "Vattenfall el".
+        var searchWords = typedText.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var hasAmountFrom = AmountParser.TryParse(typedAmountFrom, out var amountFrom);
+        var hasAmountTo = AmountParser.TryParse(typedAmountTo, out var amountTo);
+        EntryKind? kindFilter = selectedKind switch
+        {
+            "inkomst" => EntryKind.Income,
+            "utgift" => EntryKind.Expense,
+            _ => null,
+        };
+
+        if ((!string.IsNullOrWhiteSpace(typedAmountFrom) && !hasAmountFrom)
+            || (!string.IsNullOrWhiteSpace(typedAmountTo) && !hasAmountTo))
+        {
+            inputError = "Beloppet kunde inte läsas. Skriv till exempel 1250 eller 1 250,50.";
+            hasSearched = true;
+            return;
+        }
+
+        hasSearched = searchWords.Length > 0 || hasAmountFrom || hasAmountTo;
+        if (!hasSearched)
+        {
+            return;
+        }
+
+        // One amount = exact match; both = range (in either order); only "till" = up to that amount.
+        var lowestAmount = hasAmountFrom ? amountFrom : 0m;
+        var highestAmount = hasAmountTo ? amountTo : hasAmountFrom ? amountFrom : decimal.MaxValue;
+        if (lowestAmount > highestAmount)
+        {
+            (lowestAmount, highestAmount) = (highestAmount, lowestAmount);
+        }
+        var hasAmountFilter = hasAmountFrom || hasAmountTo;
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        var entryQuery = databaseContext.BudgetEntries
+            .Where(entry => entry.BudgetGroupId == GroupId);
+
+        if (kindFilter is { } kind)
+        {
+            entryQuery = entryQuery.Where(entry => entry.Kind == kind);
+        }
+
+        foreach (var searchWord in searchWords)
+        {
+            // Contains becomes LIKE '%word%' in MariaDB, which ignores upper/lower case.
+            entryQuery = entryQuery.Where(entry =>
+                entry.Name.Contains(searchWord)
+                || (entry.Note != null && entry.Note.Contains(searchWord))
+                || (entry.Category != null && entry.Category.Name.Contains(searchWord)));
+        }
+
+        if (hasAmountFilter)
+        {
+            // Match the expected amount or any amount actually paid.
+            entryQuery = entryQuery.Where(entry =>
+                (entry.Amount >= lowestAmount && entry.Amount <= highestAmount)
+                || entry.Payments.Any(payment => payment.Amount >= lowestAmount && payment.Amount <= highestAmount));
+        }
+
+        var matchingEntries = await entryQuery
+            .Include(entry => entry.Category)
+            .Include(entry => entry.Payments)
+            .AsNoTracking()
+            .ToListAsync();
+
+        var allRows = new List<ResultRow>();
+        foreach (var entry in matchingEntries)
+        {
+            var categoryName = entry.Category?.Name ?? string.Empty;
+
+            // Recurring entries matched by a paid amount: one row per matching payment, with its date.
+            var matchingPayments = hasAmountFilter
+                ? entry.Payments.Where(payment => payment.Amount >= lowestAmount && payment.Amount <= highestAmount).ToList()
+                : [];
+            var expectedAmountMatches = !hasAmountFilter
+                || (entry.Amount >= lowestAmount && entry.Amount <= highestAmount);
+
+            if (entry.Periodicity != Periodicity.Once && matchingPayments.Count > 0)
+            {
+                allRows.AddRange(matchingPayments.Select(payment => new ResultRow(
+                    entry.Id, payment.DueDate, entry.Name, categoryName, entry.Kind, entry.Periodicity,
+                    payment.Amount, IsPaid: true, entry.Note)));
+                continue;
+            }
+
+            // Otherwise one row for the entry: a one-off shows what was paid (if paid), a recurring one its expected amount.
+            var firstPayment = entry.Payments.FirstOrDefault(payment => payment.DueDate == entry.FirstDueDate);
+            var shownAmount = entry.Periodicity == Periodicity.Once && firstPayment is not null
+                ? firstPayment.Amount
+                : entry.Amount;
+            if (!expectedAmountMatches && matchingPayments.Count == 0)
+            {
+                continue;
+            }
+            allRows.Add(new ResultRow(
+                entry.Id, entry.FirstDueDate, entry.Name, categoryName, entry.Kind, entry.Periodicity,
+                shownAmount, IsPaid: entry.Periodicity == Periodicity.Once && firstPayment is not null, entry.Note));
+        }
+
+        // Newest first.
+        allRows = allRows.OrderByDescending(row => row.Date).ThenBy(row => row.Name).ToList();
+        totalHitCount = allRows.Count;
+        expenseTotal = allRows.Where(row => row.Kind == EntryKind.Expense).Sum(row => row.Amount);
+        incomeTotal = allRows.Where(row => row.Kind == EntryKind.Income).Sum(row => row.Amount);
+        isTruncated = allRows.Count > MaxRows;
+        resultRows = allRows.Take(MaxRows).ToList();
+    }
+
+    private sealed record ResultRow(
+        int EntryId, DateOnly Date, string Name, string CategoryName, EntryKind Kind,
+        Periodicity Periodicity, decimal Amount, bool IsPaid, string? Note);
+}

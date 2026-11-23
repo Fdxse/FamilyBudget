@@ -20,11 +20,12 @@
         ("poster", "/poster", "Fakturor och inkomster"),
         ("mallar", "/mallar", "Mallar"),
         ("kategorier", "/kategorier", "Kategorier"),
+        ("sok", "/sok", "Sök"),
     ];
 
     [Parameter, EditorRequired] public int GroupId { get; set; }
     [Parameter, EditorRequired] public string GroupName { get; set; } = string.Empty;
 
-    /// <summary>Which tab is highlighted: manad, ar, budget, statistik, poster, mallar or kategorier.</summary>
+    /// <summary>Which tab is highlighted: manad, ar, budget, statistik, poster, mallar, kategorier or sok.</summary>
     [Parameter, EditorRequired] public string ActiveTab { get; set; } = string.Empty;
 }

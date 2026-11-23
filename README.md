@@ -114,6 +114,18 @@ Knappen **Skapa nästa månad** (under Fakturor och inkomster) eller **Skapa pos
 föreslår månadens poster utifrån mallarna och förra månadens engångsposter. Justera belopp och datum, bocka ur
 det som inte ska med och spara, så skapas alla poster på en gång. Poster som redan finns i månaden är urbockade.
 
+## Sök
+
+Fliken **Sök** i varje budgetgrupp har separata fält för text och belopp:
+
+- **Text** letar i namn, anteckning och kategori. Flera ord måste alla finnas med, i valfri ordning.
+- **Belopp** ger exakt träff (`1250`, `1 250,50` och `1.250,50` går bra). Fyll i *till* också för ett intervall.
+  Både förväntat belopp och faktiskt betalt belopp räknas.
+- **Typ** begränsar till utgifter eller inkomster.
+
+Sökningen syns i adressen, så den går att bokmärka och bakåtknappen fungerar. Högst 500 rader visas (de senaste),
+men antal träffar och summorna gäller alla träffar.
+
 ## År, budget och statistik
 
 - **År**: inkomster, utgifter och netto per månad med graf, och en tabell per kategori och månad.
