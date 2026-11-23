@@ -21,6 +21,13 @@ public static class BudgetTexts
         return $"{char.ToUpper(monthName[0], SwedishCulture)}{monthName[1..]} {year}";
     }
 
+    /// <summary>Short month name without trailing dot, e.g. "jan".</summary>
+    public static string ShortMonth(int month) =>
+        SwedishCulture.DateTimeFormat.GetAbbreviatedMonthName(month).TrimEnd('.');
+
+    /// <summary>Whole kronor without decimals, for wide tables, e.g. "12 346".</summary>
+    public static string WholeKronor(decimal amount) => amount.ToString("#,##0", SwedishCulture);
+
     public static string Kind(EntryKind kind) => kind == EntryKind.Income ? "Inkomst" : "Utgift";
 
     public static string Periodicity(Periodicity periodicity) => periodicity switch

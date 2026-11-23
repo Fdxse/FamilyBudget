@@ -1,24 +1,30 @@
 @* Tabs shown at the top of every budget page for one group. *@
 <h1>@GroupName</h1>
 <ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <a class="nav-link @(ActiveTab == "manad" ? "active" : "")" href="@($"grupp/{GroupId}")">Månad</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ActiveTab == "poster" ? "active" : "")" href="@($"grupp/{GroupId}/poster")">Fakturor och inkomster</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ActiveTab == "mallar" ? "active" : "")" href="@($"grupp/{GroupId}/mallar")">Mallar</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(ActiveTab == "kategorier" ? "active" : "")" href="@($"grupp/{GroupId}/kategorier")">Kategorier</a>
-    </li>
+    @foreach (var tab in tabs)
+    {
+        <li class="nav-item">
+            <a class="nav-link @(ActiveTab == tab.Key ? "active" : "")" href="@($"grupp/{GroupId}{tab.Path}")">@tab.Title</a>
+        </li>
+    }
 </ul>
 
 @code {
+    /// <summary>All tabs in display order: key used by ActiveTab, path after grupp/{id}, and title.</summary>
+    private static readonly (string Key, string Path, string Title)[] tabs =
+    [
+        ("manad", "", "Månad"),
+        ("ar", "/ar", "År"),
+        ("budget", "/budget", "Budget"),
+        ("statistik", "/statistik", "Statistik"),
+        ("poster", "/poster", "Fakturor och inkomster"),
+        ("mallar", "/mallar", "Mallar"),
+        ("kategorier", "/kategorier", "Kategorier"),
+    ];
+
     [Parameter, EditorRequired] public int GroupId { get; set; }
     [Parameter, EditorRequired] public string GroupName { get; set; } = string.Empty;
 
-    /// <summary>Which tab is highlighted: manad, poster, mallar or kategorier.</summary>
+    /// <summary>Which tab is highlighted: manad, ar, budget, statistik, poster, mallar or kategorier.</summary>
     [Parameter, EditorRequired] public string ActiveTab { get; set; } = string.Empty;
 }

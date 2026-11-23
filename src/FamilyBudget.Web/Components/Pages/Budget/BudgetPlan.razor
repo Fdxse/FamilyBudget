@@ -1,0 +1,286 @@
+@page "/grupp/{GroupId:int}/budget"
+@page "/grupp/{GroupId:int}/budget/{Year:int}/{Month:int}"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject BudgetOutcomeCalculator OutcomeCalculator
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Budget</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="budget" />
+
+    @* Month navigation *@
+    <div class="d-flex align-items-center gap-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
+        <h2 class="h4 mb-0">Budget @BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+    </div>
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    <p class="form-text">
+        Ange hur mycket varje kategori får kosta per månad. Budgeten gäller alla månader.
+        "Snitt 12 mån" är genomsnittet för de tolv månaderna fram till och med den visade, som hjälp att sätta en rimlig nivå.
+    </p>
+
+    @if (budgetChart is not null)
+    {
+        <h3 class="h5">Utgifter: budget mot utfall</h3>
+        <BudgetChart Definition="budgetChart" Height="@Math.Max(220, expenseRows.Count * 34 + 60)" Description="Budget mot utfall per kategori" />
+    }
+
+    @foreach (var tableSection in Sections())
+    {
+        <h3 class="h5 mt-4">@tableSection.Title</h3>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Kategori</th>
+                        <th style="width: 10rem">Budget per månad</th>
+                        <th class="text-end">Utfall</th>
+                        <th class="text-end">@(tableSection.IsIncome ? "Skillnad" : "Kvar")</th>
+                        <th style="width: 18%"></th>
+                        <th class="text-end">Snitt 12 mån</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var budgetRow in tableSection.Rows)
+                    {
+                        var difference = (budgetRow.EditedBudget ?? 0) - budgetRow.MonthOutcome;
+                        <tr>
+                            <td>@budgetRow.CategoryName</td>
+                            <td>
+                                <input type="number" step="1" min="0" class="form-control form-control-sm"
+                                       @bind="budgetRow.EditedBudget" aria-label="@($"Budget per månad för {budgetRow.CategoryName}")" />
+                            </td>
+                            <td class="text-end">@BudgetTexts.Money(budgetRow.MonthOutcome)</td>
+                            <td class="text-end">
+                                @if (budgetRow.EditedBudget is not null)
+                                {
+                                    @* For expenses, less spent is good; for incomes more received is good. *@
+                                    var isGood = tableSection.IsIncome ? difference <= 0 : difference >= 0;
+                                    <span class="@(isGood ? "text-success" : "text-danger")">@BudgetTexts.Money(tableSection.IsIncome ? -difference : difference)</span>
+                                }
+                            </td>
+                            <td>
+                                @if (budgetRow.EditedBudget is > 0 and var budgetAmount)
+                                {
+                                    var usedPercent = (int)Math.Round(budgetRow.MonthOutcome / budgetAmount * 100);
+                                    var isOver = !tableSection.IsIncome && usedPercent > 100;
+                                    <div class="progress" role="progressbar" aria-label="@($"{usedPercent} procent av budgeten")"
+                                         aria-valuenow="@usedPercent" aria-valuemin="0" aria-valuemax="100" title="@($"{usedPercent} %")">
+                                        <div class="progress-bar @(isOver ? "bg-danger" : "")" style="width: @(Math.Min(usedPercent, 100))%"></div>
+                                    </div>
+                                }
+                            </td>
+                            <td class="text-end text-muted">@BudgetTexts.Money(budgetRow.AverageLastYear)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-semibold">
+                        <td>Totalt</td>
+                        <td class="ps-3">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.EditedBudget ?? 0))</td>
+                        <td class="text-end">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.MonthOutcome))</td>
+                        <td colspan="2"></td>
+                        <td class="text-end text-muted">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.AverageLastYear))</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+
+    <div class="d-flex gap-2 align-items-center mb-4">
+        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">Spara budget</button>
+        <span class="form-text">Lämna fältet tomt för att ta bort budgeten för en kategori.</span>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? statusMessage;
+    private bool isError;
+    private BudgetGroup? budgetGroup;
+    private int shownYear;
+    private int shownMonth;
+
+    private List<BudgetRow> expenseRows = [];
+    private List<BudgetRow> incomeRows = [];
+    private ChartDefinition? budgetChart;
+
+    [Parameter] public int GroupId { get; set; }
+    [Parameter] public int? Year { get; set; }
+    [Parameter] public int? Month { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Without year/month in the address, show the current month.
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        shownYear = Year is >= 1900 and <= 2200 ? Year.Value : today.Year;
+        shownMonth = Month is >= 1 and <= 12 ? Month.Value : today.Month;
+        statusMessage = null;
+
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await LoadAsync();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var firstDayOfMonth = new DateOnly(shownYear, shownMonth, 1);
+        var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+        // The twelve months up to and including the shown month, for the average column.
+        var firstDayOfTwelveMonths = firstDayOfMonth.AddMonths(-11);
+
+        var twelveMonthItems = await OutcomeCalculator.GetItemsAsync(GroupId, firstDayOfTwelveMonths, lastDayOfMonth);
+        var monthlyBudgets = await OutcomeCalculator.GetMonthlyBudgetsAsync(GroupId);
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        var categories = await databaseContext.Categories
+            .Where(category => category.BudgetGroupId == GroupId)
+            .OrderBy(category => category.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        expenseRows = [];
+        incomeRows = [];
+        foreach (var category in categories)
+        {
+            var categoryItems = twelveMonthItems.Where(item => item.CategoryId == category.Id).ToList();
+            var monthOutcome = categoryItems.Where(item => item.DueDate >= firstDayOfMonth).Sum(item => item.EffectiveAmount);
+            var averageLastYear = Math.Round(categoryItems.Sum(item => item.EffectiveAmount) / 12, 0);
+            decimal? monthlyBudget = monthlyBudgets.TryGetValue(category.Id, out var budgetAmount) ? budgetAmount : null;
+
+            var budgetRow = new BudgetRow(category.Id, category.Name, monthOutcome, averageLastYear, monthlyBudget);
+
+            // A category counts as an income category when most of its occurrences are incomes.
+            // Categories that are not used yet are listed among the expenses.
+            var incomeCount = categoryItems.Count(item => item.Kind == EntryKind.Income);
+            var isIncomeCategory = incomeCount > 0 && incomeCount * 2 >= categoryItems.Count;
+            (isIncomeCategory ? incomeRows : expenseRows).Add(budgetRow);
+        }
+
+        BuildChart();
+    }
+
+    /// <summary>Horizontal bars per expense category that has a budget or any outcome this month.</summary>
+    private void BuildChart()
+    {
+        var chartRows = expenseRows
+            .Where(budgetRow => budgetRow.SavedBudget is > 0 || budgetRow.MonthOutcome > 0)
+            .ToList();
+
+        budgetChart = chartRows.Count == 0 ? null : new ChartDefinition
+        {
+            Horizontal = true,
+            Labels = chartRows.Select(budgetRow => budgetRow.CategoryName).ToList(),
+            Datasets =
+            [
+                new ChartDataset("Budget", chartRows.Select(budgetRow => budgetRow.SavedBudget ?? 0).ToList(), ChartColors.Budget),
+                new ChartDataset("Utfall", chartRows.Select(budgetRow => budgetRow.MonthOutcome).ToList(), ChartColors.Outcome),
+            ],
+        };
+    }
+
+    /// <summary>Saves all rows: new budgets are added, changed ones updated and emptied ones removed.</summary>
+    private async Task SaveAsync()
+    {
+        var allRows = expenseRows.Concat(incomeRows).ToList();
+        if (allRows.Any(budgetRow => budgetRow.EditedBudget is < 0))
+        {
+            statusMessage = "Budgeten kan inte vara negativ.";
+            isError = true;
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+            var existingBudgets = await databaseContext.CategoryBudgets
+                .Where(categoryBudget => categoryBudget.BudgetGroupId == GroupId)
+                .ToDictionaryAsync(categoryBudget => categoryBudget.CategoryId);
+
+            foreach (var budgetRow in allRows)
+            {
+                existingBudgets.TryGetValue(budgetRow.CategoryId, out var existingBudget);
+                if (budgetRow.EditedBudget is null or 0)
+                {
+                    // Empty field (or zero): no budget for this category.
+                    if (existingBudget is not null)
+                    {
+                        databaseContext.CategoryBudgets.Remove(existingBudget);
+                    }
+                }
+                else if (existingBudget is null)
+                {
+                    databaseContext.CategoryBudgets.Add(new CategoryBudget
+                    {
+                        BudgetGroupId = GroupId,
+                        CategoryId = budgetRow.CategoryId,
+                        MonthlyAmount = budgetRow.EditedBudget.Value,
+                    });
+                }
+                else
+                {
+                    existingBudget.MonthlyAmount = budgetRow.EditedBudget.Value;
+                }
+            }
+            await databaseContext.SaveChangesAsync();
+
+            // Reload so the chart and totals show what is now stored.
+            await LoadAsync();
+            statusMessage = "Budgeten är sparad.";
+            isError = false;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private IEnumerable<(string Title, bool IsIncome, List<BudgetRow> Rows)> Sections()
+    {
+        yield return ("Utgifter", false, expenseRows);
+        if (incomeRows.Count > 0)
+        {
+            yield return ("Inkomster", true, incomeRows);
+        }
+    }
+
+    /// <summary>Link to the month <paramref name="monthOffset"/> months from the one shown.</summary>
+    private string MonthLink(int monthOffset)
+    {
+        var targetMonth = new DateOnly(shownYear, shownMonth, 1).AddMonths(monthOffset);
+        return $"grupp/{GroupId}/budget/{targetMonth.Year}/{targetMonth.Month}";
+    }
+
+    /// <summary>One category in the table, with the value being edited.</summary>
+    private sealed class BudgetRow(int categoryId, string categoryName, decimal monthOutcome, decimal averageLastYear, decimal? savedBudget)
+    {
+        public int CategoryId { get; } = categoryId;
+        public string CategoryName { get; } = categoryName;
+        public decimal MonthOutcome { get; } = monthOutcome;
+        public decimal AverageLastYear { get; } = averageLastYear;
+        public decimal? SavedBudget { get; } = savedBudget;
+        public decimal? EditedBudget { get; set; } = savedBudget;
+    }
+}

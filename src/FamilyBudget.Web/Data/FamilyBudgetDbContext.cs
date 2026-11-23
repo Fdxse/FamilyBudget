@@ -18,6 +18,7 @@ public class FamilyBudgetDbContext(DbContextOptions<FamilyBudgetDbContext> optio
     public DbSet<BudgetEntry> BudgetEntries => Set<BudgetEntry>();
     public DbSet<EntryPayment> EntryPayments => Set<EntryPayment>();
     public DbSet<EntryTemplate> EntryTemplates => Set<EntryTemplate>();
+    public DbSet<CategoryBudget> CategoryBudgets => Set<CategoryBudget>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -75,6 +76,18 @@ public class FamilyBudgetDbContext(DbContextOptions<FamilyBudgetDbContext> optio
                 .OnDelete(DeleteBehavior.Cascade);
             template.HasOne(item => item.Category).WithMany().HasForeignKey(item => item.CategoryId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<CategoryBudget>(categoryBudget =>
+        {
+            categoryBudget.Property(item => item.MonthlyAmount).HasPrecision(12, 2);
+            // One monthly budget per category and group.
+            categoryBudget.HasIndex(item => new { item.BudgetGroupId, item.CategoryId }).IsUnique();
+            categoryBudget.HasOne(item => item.BudgetGroup).WithMany().HasForeignKey(item => item.BudgetGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Deleting a category also deletes its budget.
+            categoryBudget.HasOne(item => item.Category).WithMany().HasForeignKey(item => item.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BudgetGroupMembership>(membership =>

@@ -108,6 +108,14 @@ Klicka på en budgetgrupp på startsidan. Där finns fyra flikar:
 - **Mallar:** färdiga utgångspunkter, t.ex. "Lön" med vanligt belopp och dag. *Lägg till* öppnar en ifylld ny post.
 - **Kategorier:** varje grupp har egna kategorier. Standardkategorier skapas första gången gruppen öppnas.
 
+## År, budget och statistik
+
+- **År**: inkomster, utgifter och netto per månad med graf, och en tabell per kategori och månad.
+  Betalda poster räknas med betalt belopp, obetalda med förväntat belopp.
+- **Budget**: sätt en månadsbudget per kategori och jämför med utfallet för en vald månad.
+  Kolumnen "Snitt 12 mån" hjälper till att välja en rimlig nivå. Årsvyn markerar månader över budget med rött.
+- **Statistik**: år mot år, fördelning av utgifter per kategori för ett valt år och årets största utgifter.
+
 ## Databasändringar (migreringar)
 
 Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny
@@ -124,6 +132,7 @@ dotnet ef migrations add <Namn> --project src/FamilyBudget.Web --output-dir Data
 - `MySqlConnector` 2.6.2 (uppdaterad för att täppa till en känd sårbarhet i 2.4.0)
 - `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 9.0.23 (inloggning och användare)
 - `Microsoft.EntityFrameworkCore.Design` 9.0.23 och verktyget `dotnet-ef` 9.0.23 (bara för att skapa migreringar)
+- Chart.js 4.6.1 (MIT, grafer). Filen ligger i `wwwroot/lib/chartjs` så appen inte behöver internet.
 
 Pomelo finns ännu inte i en version för EF Core 10, så appen använder EF Core 9 ovanpå .NET 10. Det fungerar fullt ut;
 vi byter till Pomelo 10 när den släpps.
