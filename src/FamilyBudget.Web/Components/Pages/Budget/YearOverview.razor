@@ -19,10 +19,12 @@ else
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="ar" />
 
     @* Year navigation *@
-    <div class="d-flex align-items-center gap-3 mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 gap-sm-3 mb-3">
         <a class="btn btn-outline-secondary btn-sm" href="@($"grupp/{GroupId}/ar/{shownYear - 1}")">‹ @(shownYear - 1)</a>
         <h2 class="h4 mb-0">År @shownYear</h2>
         <a class="btn btn-outline-secondary btn-sm" href="@($"grupp/{GroupId}/ar/{shownYear + 1}")">@(shownYear + 1) ›</a>
+        @* Plain link (no Blazor navigation) so the browser downloads the file. *@
+        <a class="btn btn-outline-success btn-sm ms-auto" href="@($"grupp/{GroupId}/excel?ar={shownYear}")" data-enhance-nav="false">Ladda ner @shownYear till Excel</a>
     </div>
 
     @* Summary of the year *@
@@ -55,7 +57,7 @@ else
     }
 
     <div class="table-responsive mt-3 mb-4">
-        <table class="table table-sm align-middle">
+        <table class="table-cards table table-sm align-middle">
             <thead>
                 <tr>
                     <th>Månad</th>
@@ -69,21 +71,21 @@ else
                 @foreach (var monthSummary in monthSummaries)
                 {
                     <tr>
-                        <td><a href="@($"grupp/{GroupId}/manad/{shownYear}/{monthSummary.Month}")">@BudgetTexts.MonthTitle(shownYear, monthSummary.Month)</a></td>
-                        <td class="text-end">@BudgetTexts.Money(monthSummary.Income)</td>
-                        <td class="text-end">@BudgetTexts.Money(monthSummary.Expenses)</td>
-                        <td class="text-end @(monthSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.Money(monthSummary.Net)</td>
-                        <td class="text-end text-muted">@(monthSummary.UnpaidExpenses > 0 ? BudgetTexts.Money(monthSummary.UnpaidExpenses) : "")</td>
+                        <td data-card-title><a href="@($"grupp/{GroupId}/manad/{shownYear}/{monthSummary.Month}")">@BudgetTexts.MonthTitle(shownYear, monthSummary.Month)</a></td>
+                        <td data-label="Inkomster" class="text-end">@BudgetTexts.Money(monthSummary.Income)</td>
+                        <td data-label="Utgifter" class="text-end">@BudgetTexts.Money(monthSummary.Expenses)</td>
+                        <td data-label="Netto" class="text-end @(monthSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.Money(monthSummary.Net)</td>
+                        <td data-label="Obetalt" class="text-end text-muted">@(monthSummary.UnpaidExpenses > 0 ? BudgetTexts.Money(monthSummary.UnpaidExpenses) : "")</td>
                     </tr>
                 }
             </tbody>
             <tfoot>
                 <tr class="fw-semibold">
-                    <td>Totalt</td>
-                    <td class="text-end">@BudgetTexts.Money(yearIncome)</td>
-                    <td class="text-end">@BudgetTexts.Money(yearExpenses)</td>
-                    <td class="text-end">@BudgetTexts.Money(yearIncome - yearExpenses)</td>
-                    <td class="text-end text-muted">@BudgetTexts.Money(monthSummaries.Sum(monthSummary => monthSummary.UnpaidExpenses))</td>
+                    <td data-card-title>Totalt</td>
+                    <td data-label="Inkomster" class="text-end">@BudgetTexts.Money(yearIncome)</td>
+                    <td data-label="Utgifter" class="text-end">@BudgetTexts.Money(yearExpenses)</td>
+                    <td data-label="Netto" class="text-end">@BudgetTexts.Money(yearIncome - yearExpenses)</td>
+                    <td data-label="Obetalt" class="text-end text-muted">@BudgetTexts.Money(monthSummaries.Sum(monthSummary => monthSummary.UnpaidExpenses))</td>
                 </tr>
             </tfoot>
         </table>

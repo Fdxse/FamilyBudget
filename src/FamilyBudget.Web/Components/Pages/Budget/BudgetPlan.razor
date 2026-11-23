@@ -20,10 +20,10 @@ else
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="budget" />
 
     @* Month navigation *@
-    <div class="d-flex align-items-center gap-3 mb-3">
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
+    <div class="d-flex flex-wrap align-items-center gap-2 gap-sm-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)" aria-label="Föregående månad">‹<span class="d-none d-sm-inline"> Föregående</span></a>
         <h2 class="h4 mb-0">Budget @BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)" aria-label="Nästa månad"><span class="d-none d-sm-inline">Nästa </span>›</a>
     </div>
 
     <StatusMessage Message="@statusMessage" IsError="@isError" />
@@ -43,7 +43,7 @@ else
     {
         <h3 class="h5 mt-4">@tableSection.Title</h3>
         <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table-cards table table-sm align-middle">
                 <thead>
                     <tr>
                         <th>Kategori</th>
@@ -59,13 +59,13 @@ else
                     {
                         var difference = (budgetRow.EditedBudget ?? 0) - budgetRow.MonthOutcome;
                         <tr>
-                            <td>@budgetRow.CategoryName</td>
-                            <td>
+                            <td data-card-title>@budgetRow.CategoryName</td>
+                            <td data-label="Budget per månad">
                                 <input type="number" step="1" min="0" class="form-control form-control-sm"
                                        @bind="budgetRow.EditedBudget" aria-label="@($"Budget per månad för {budgetRow.CategoryName}")" />
                             </td>
-                            <td class="text-end">@BudgetTexts.Money(budgetRow.MonthOutcome)</td>
-                            <td class="text-end">
+                            <td data-label="Utfall" class="text-end">@BudgetTexts.Money(budgetRow.MonthOutcome)</td>
+                            <td data-label="Kvar" class="text-end">
                                 @if (budgetRow.EditedBudget is not null)
                                 {
                                     @* For expenses, less spent is good; for incomes more received is good. *@
@@ -84,17 +84,17 @@ else
                                     </div>
                                 }
                             </td>
-                            <td class="text-end text-muted">@BudgetTexts.Money(budgetRow.AverageLastYear)</td>
+                            <td data-label="Snitt 12 mån" class="text-end text-muted">@BudgetTexts.Money(budgetRow.AverageLastYear)</td>
                         </tr>
                     }
                 </tbody>
                 <tfoot>
                     <tr class="fw-semibold">
-                        <td>Totalt</td>
-                        <td class="ps-3">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.EditedBudget ?? 0))</td>
-                        <td class="text-end">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.MonthOutcome))</td>
+                        <td data-card-title>Totalt</td>
+                        <td data-label="Budget" class="ps-3">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.EditedBudget ?? 0))</td>
+                        <td data-label="Utfall" class="text-end">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.MonthOutcome))</td>
                         <td colspan="2"></td>
-                        <td class="text-end text-muted">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.AverageLastYear))</td>
+                        <td data-label="Snitt 12 mån" class="text-end text-muted">@BudgetTexts.Money(tableSection.Rows.Sum(budgetRow => budgetRow.AverageLastYear))</td>
                     </tr>
                 </tfoot>
             </table>

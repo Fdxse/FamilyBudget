@@ -19,10 +19,10 @@ else
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="manad" />
 
     @* Month navigation *@
-    <div class="d-flex align-items-center gap-3 mb-3">
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
+    <div class="d-flex flex-wrap align-items-center gap-2 gap-sm-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)" aria-label="Föregående månad">‹<span class="d-none d-sm-inline"> Föregående</span></a>
         <h2 class="h4 mb-0">@BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)" aria-label="Nästa månad"><span class="d-none d-sm-inline">Nästa </span>›</a>
         @* Generate this month's bills and incomes from templates and last month in one go. *@
         <a class="btn btn-outline-primary btn-sm ms-auto" href="@($"grupp/{GroupId}/skapa-manad/{shownYear}/{shownMonth}")">Skapa poster för månaden…</a>
     </div>
@@ -60,7 +60,7 @@ else
     else
     {
         <div class="table-responsive">
-            <table class="table align-middle">
+            <table class="table-cards table align-middle">
                 <thead>
                     <tr>
                         <th>Förfaller</th>
@@ -75,16 +75,16 @@ else
                     @foreach (var dueRow in dueRows)
                     {
                         <tr class="@RowCssClass(dueRow)">
-                            <td>@BudgetTexts.Date(dueRow.DueDate)</td>
-                            <td>
+                            <td data-label="Förfaller">@BudgetTexts.Date(dueRow.DueDate)</td>
+                            <td data-card-title>
                                 <a href="@($"grupp/{GroupId}/poster/{dueRow.Entry.Id}")">@dueRow.Entry.Name</a>
                                 <span class="badge @(dueRow.Entry.Kind == EntryKind.Income ? "text-bg-success" : "text-bg-secondary") ms-1">
                                     @BudgetTexts.Kind(dueRow.Entry.Kind)
                                 </span>
                             </td>
-                            <td>@dueRow.Entry.Category?.Name</td>
-                            <td class="text-end">@BudgetTexts.Money(dueRow.Entry.Amount)</td>
-                            <td style="max-width: 10rem">
+                            <td data-label="Kategori">@dueRow.Entry.Category?.Name</td>
+                            <td data-label="Belopp" class="text-end">@BudgetTexts.Money(dueRow.Entry.Amount)</td>
+                            <td data-label="Betalt belopp" style="max-width: 10rem">
                                 @if (dueRow.Payment is null)
                                 {
                                     @* The actual amount can be adjusted before marking as paid, e.g. a varying salary. *@

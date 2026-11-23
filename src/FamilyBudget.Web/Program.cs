@@ -34,6 +34,8 @@ builder.Services.AddDbContextFactory<FamilyBudgetDbContext>(options =>
 builder.Services.AddScoped<BudgetGroupAccess>();
 // Shared outcome calculation for year overview, budget and statistics pages.
 builder.Services.AddScoped<BudgetOutcomeCalculator>();
+// Builds the .xlsx files for "Ladda ner till Excel".
+builder.Services.AddScoped<ExcelExporter>();
 
 // --- Login (ASP.NET Core Identity) -----------------------------------------
 // Users log in with a user name and password; the session is kept in a cookie.
@@ -136,6 +138,21 @@ app.MapPost("/konto/logga-ut", async (SignInManager<ApplicationUser> signInManag
     await signInManager.SignOutAsync();
     return Results.LocalRedirect("/konto/logga-in");
 });
+// "Ladda ner till Excel": the whole period, or one year with ?ar=2026. Only members of the group get the file.
+app.MapGet("/grupp/{groupId:int}/excel", async (int groupId, int? ar, HttpContext httpContext,
+    BudgetGroupAccess groupAccess, ExcelExporter excelExporter) =>
+{
+    var budgetGroup = await groupAccess.GetGroupForMemberAsync(httpContext.User, groupId);
+    if (budgetGroup is null)
+    {
+        return Results.NotFound();
+    }
+    var onlyYear = ar is >= 1900 and <= 2200 ? ar : null;
+    var workbookBytes = await excelExporter.CreateWorkbookAsync(budgetGroup, onlyYear);
+    var fileName = $"{budgetGroup.Name} {(onlyYear?.ToString() ?? "alla år")} {DateTime.Today:yyyy-MM-dd}.xlsx";
+    return Results.File(workbookBytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+}).RequireAuthorization();
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
