@@ -69,6 +69,10 @@ if [[ -x "$synology_acl_tool" ]]; then
     done
 fi
 
+# Removing the ACL leaves the folder with mode 000 (d---------), so always set
+# plain Unix permissions afterwards: owner (the container user) may read/write.
+$sudo_prefix chmod 750 "$DATA_ROOT/mariadb" "$DATA_ROOT/keys"
+
 echo "==> Building web image"
 APP_GIT_COMMIT="$current_commit" $compose_command build --pull web
 
