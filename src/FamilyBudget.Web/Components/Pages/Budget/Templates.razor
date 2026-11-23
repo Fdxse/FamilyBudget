@@ -45,13 +45,16 @@ else
                     {
                         <tr>
                             <td>@template.Name</td>
-                            <td>@BudgetTexts.Kind(template.Kind)</td>
+                            <td>
+                                @* Same colors as the template buttons on the "Fakturor och inkomster" tab. *@
+                                <span class="badge @(template.Kind == EntryKind.Income ? "text-bg-success" : "text-bg-primary")">@BudgetTexts.Kind(template.Kind)</span>
+                            </td>
                             <td>@template.Category?.Name</td>
                             <td>@BudgetTexts.Periodicity(template.Periodicity)</td>
                             <td>@(template.DayOfMonth?.ToString() ?? "–")</td>
                             <td class="text-end">@BudgetTexts.Money(template.Amount)</td>
                             <td class="text-nowrap text-end">
-                                <a class="btn btn-sm btn-primary" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">Lägg till</a>
+                                <a class="btn btn-sm @(template.Kind == EntryKind.Income ? "btn-success" : "btn-primary")" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">Lägg till</a>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEditing(template)">Ändra</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(template.Id)">Ta bort</button>
                             </td>
@@ -159,7 +162,9 @@ else
         templates = await databaseContext.EntryTemplates
             .Where(template => template.BudgetGroupId == GroupId)
             .Include(template => template.Category)
-            .OrderBy(template => template.Name)
+            // Incomes first, then bills, same order as on the "Fakturor och inkomster" tab.
+            .OrderByDescending(template => template.Kind)
+            .ThenBy(template => template.Name)
             .AsNoTracking()
             .ToListAsync();
         categories = await databaseContext.Categories
