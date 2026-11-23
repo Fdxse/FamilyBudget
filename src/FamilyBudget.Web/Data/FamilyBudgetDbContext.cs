@@ -1,3 +1,4 @@
+using FamilyBudget.Web.Data.Budget;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,10 @@ public class FamilyBudgetDbContext(DbContextOptions<FamilyBudgetDbContext> optio
 {
     public DbSet<BudgetGroup> BudgetGroups => Set<BudgetGroup>();
     public DbSet<BudgetGroupMembership> BudgetGroupMemberships => Set<BudgetGroupMembership>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<BudgetEntry> BudgetEntries => Set<BudgetEntry>();
+    public DbSet<EntryPayment> EntryPayments => Set<EntryPayment>();
+    public DbSet<EntryTemplate> EntryTemplates => Set<EntryTemplate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +33,48 @@ public class FamilyBudgetDbContext(DbContextOptions<FamilyBudgetDbContext> optio
         {
             budgetGroup.Property(group => group.Name).HasMaxLength(100).IsRequired();
             budgetGroup.HasIndex(group => group.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<Category>(category =>
+        {
+            category.Property(item => item.Name).HasMaxLength(100).IsRequired();
+            // Category names are unique within a group.
+            category.HasIndex(item => new { item.BudgetGroupId, item.Name }).IsUnique();
+            category.HasOne(item => item.BudgetGroup).WithMany().HasForeignKey(item => item.BudgetGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BudgetEntry>(entry =>
+        {
+            entry.Property(item => item.Name).HasMaxLength(150).IsRequired();
+            entry.Property(item => item.Amount).HasPrecision(12, 2);
+            entry.Property(item => item.Note).HasMaxLength(1000);
+            entry.HasIndex(item => item.BudgetGroupId);
+            entry.HasOne(item => item.BudgetGroup).WithMany().HasForeignKey(item => item.BudgetGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Deleting a category keeps the entries, just without category.
+            entry.HasOne(item => item.Category).WithMany().HasForeignKey(item => item.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<EntryPayment>(payment =>
+        {
+            payment.Property(item => item.Amount).HasPrecision(12, 2);
+            // One payment per entry and due date.
+            payment.HasIndex(item => new { item.BudgetEntryId, item.DueDate }).IsUnique();
+            payment.HasOne(item => item.BudgetEntry).WithMany(entry => entry.Payments)
+                .HasForeignKey(item => item.BudgetEntryId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EntryTemplate>(template =>
+        {
+            template.Property(item => item.Name).HasMaxLength(150).IsRequired();
+            template.Property(item => item.Amount).HasPrecision(12, 2);
+            template.Property(item => item.Note).HasMaxLength(1000);
+            template.HasOne(item => item.BudgetGroup).WithMany().HasForeignKey(item => item.BudgetGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            template.HasOne(item => item.Category).WithMany().HasForeignKey(item => item.CategoryId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<BudgetGroupMembership>(membership =>

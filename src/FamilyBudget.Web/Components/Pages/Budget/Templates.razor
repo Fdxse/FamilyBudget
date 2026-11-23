@@ -1,0 +1,264 @@
+@page "/grupp/{GroupId:int}/mallar"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Mallar</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="mallar" />
+
+    <p>En mall är en färdig utgångspunkt, till exempel "Lön" med det vanliga beloppet. Välj <em>Lägg till</em> så öppnas en ny post som redan är ifylld, och du behöver bara justera och spara.</p>
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    @if (templates.Count == 0)
+    {
+        <p class="text-muted">Inga mallar ännu.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Namn</th>
+                        <th>Typ</th>
+                        <th>Kategori</th>
+                        <th>Hur ofta</th>
+                        <th>Dag</th>
+                        <th class="text-end">Belopp</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var template in templates)
+                    {
+                        <tr>
+                            <td>@template.Name</td>
+                            <td>@BudgetTexts.Kind(template.Kind)</td>
+                            <td>@template.Category?.Name</td>
+                            <td>@BudgetTexts.Periodicity(template.Periodicity)</td>
+                            <td>@(template.DayOfMonth?.ToString() ?? "–")</td>
+                            <td class="text-end">@BudgetTexts.Money(template.Amount)</td>
+                            <td class="text-nowrap text-end">
+                                <a class="btn btn-sm btn-primary" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">Lägg till</a>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEditing(template)">Ändra</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(template.Id)">Ta bort</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h2 class="h5 mt-4">@(editingTemplateId is null ? "Ny mall" : $"Ändra mallen {form.Name}")</h2>
+    <div class="row">
+        <div class="col-lg-7">
+            <EditForm Model="form" OnValidSubmit="SaveAsync">
+                <DataAnnotationsValidator />
+                <div class="row">
+                    <div class="col-sm-6 mb-3">
+                        <label for="templateName" class="form-label">Namn</label>
+                        <InputText id="templateName" @bind-Value="form.Name" class="form-control" placeholder="t.ex. Lön" />
+                        <ValidationMessage For="() => form.Name" class="text-danger" />
+                    </div>
+                    <div class="col-sm-6 mb-3">
+                        <label for="templateKind" class="form-label">Typ</label>
+                        <InputSelect id="templateKind" @bind-Value="form.Kind" class="form-select">
+                            <option value="@EntryKind.Expense">Faktura/utgift</option>
+                            <option value="@EntryKind.Income">Inkomst</option>
+                        </InputSelect>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6 mb-3">
+                        <label for="templateCategory" class="form-label">Kategori</label>
+                        <InputSelect id="templateCategory" @bind-Value="form.CategoryId" class="form-select">
+                            <option value="">Ingen kategori</option>
+                            @foreach (var category in categories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-sm-6 mb-3">
+                        <label for="templateAmount" class="form-label">Belopp (kr)</label>
+                        <InputNumber id="templateAmount" @bind-Value="form.Amount" class="form-control" step="0.01" />
+                        <ValidationMessage For="() => form.Amount" class="text-danger" />
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-sm-6 mb-3">
+                        <label for="templatePeriodicity" class="form-label">Hur ofta</label>
+                        <InputSelect id="templatePeriodicity" @bind-Value="form.Periodicity" class="form-select">
+                            @foreach (var periodicity in Enum.GetValues<Periodicity>())
+                            {
+                                <option value="@periodicity">@BudgetTexts.Periodicity(periodicity)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-sm-6 mb-3">
+                        <label for="templateDay" class="form-label">Brukar förfalla dag (1–31, valfritt)</label>
+                        <InputNumber id="templateDay" @bind-Value="form.DayOfMonth" class="form-control" />
+                        <ValidationMessage For="() => form.DayOfMonth" class="text-danger" />
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">@(editingTemplateId is null ? "Skapa mall" : "Spara mall")</button>
+                    @if (editingTemplateId is not null)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="StopEditing">Avbryt</button>
+                    }
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private string? statusMessage;
+    private bool isError;
+    private BudgetGroup? budgetGroup;
+    private List<EntryTemplate> templates = [];
+    private List<Category> categories = [];
+    private TemplateForm form = new();
+
+    /// <summary>Id of the template being edited, or null when creating a new one.</summary>
+    private int? editingTemplateId;
+
+    [Parameter] public int GroupId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await LoadAsync();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        templates = await databaseContext.EntryTemplates
+            .Where(template => template.BudgetGroupId == GroupId)
+            .Include(template => template.Category)
+            .OrderBy(template => template.Name)
+            .AsNoTracking()
+            .ToListAsync();
+        categories = await databaseContext.Categories
+            .Where(category => category.BudgetGroupId == GroupId)
+            .OrderBy(category => category.Name)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    private void StartEditing(EntryTemplate template)
+    {
+        editingTemplateId = template.Id;
+        form = new TemplateForm
+        {
+            Name = template.Name,
+            Kind = template.Kind,
+            CategoryId = template.CategoryId,
+            Amount = template.Amount,
+            Periodicity = template.Periodicity,
+            DayOfMonth = template.DayOfMonth,
+        };
+    }
+
+    private void StopEditing()
+    {
+        editingTemplateId = null;
+        form = new TemplateForm();
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        EntryTemplate? templateToSave;
+        if (editingTemplateId is null)
+        {
+            templateToSave = new EntryTemplate { BudgetGroupId = GroupId };
+            databaseContext.EntryTemplates.Add(templateToSave);
+        }
+        else
+        {
+            templateToSave = await databaseContext.EntryTemplates
+                .FirstOrDefaultAsync(template => template.Id == editingTemplateId && template.BudgetGroupId == GroupId);
+            if (templateToSave is null)
+            {
+                statusMessage = "Mallen finns inte längre.";
+                isError = true;
+                return;
+            }
+        }
+
+        templateToSave.Name = form.Name.Trim();
+        templateToSave.Kind = form.Kind;
+        // Only accept categories from this group.
+        templateToSave.CategoryId = categories.Any(category => category.Id == form.CategoryId) ? form.CategoryId : null;
+        templateToSave.Amount = form.Amount;
+        templateToSave.Periodicity = form.Periodicity;
+        templateToSave.DayOfMonth = form.DayOfMonth;
+
+        await databaseContext.SaveChangesAsync();
+
+        statusMessage = $"Mallen '{templateToSave.Name}' är sparad.";
+        isError = false;
+        StopEditing();
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(int templateId)
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        await databaseContext.EntryTemplates
+            .Where(template => template.Id == templateId && template.BudgetGroupId == GroupId)
+            .ExecuteDeleteAsync();
+
+        if (editingTemplateId == templateId)
+        {
+            StopEditing();
+        }
+        statusMessage = "Mallen är borttagen.";
+        isError = false;
+        await LoadAsync();
+    }
+
+    private sealed class TemplateForm
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(150)]
+        public string Name { get; set; } = string.Empty;
+
+        public EntryKind Kind { get; set; } = EntryKind.Income;
+
+        public int? CategoryId { get; set; }
+
+        [Range(typeof(decimal), "0", "99999999", ErrorMessage = "Ange ett belopp (0 eller mer).")]
+        public decimal Amount { get; set; }
+
+        public Periodicity Periodicity { get; set; } = Periodicity.Monthly;
+
+        [Range(1, 31, ErrorMessage = "Ange en dag mellan 1 och 31.")]
+        public int? DayOfMonth { get; set; }
+    }
+}

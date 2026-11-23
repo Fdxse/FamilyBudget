@@ -91,6 +91,155 @@ namespace FamilyBudget.Web.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.BudgetEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("BudgetGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("FirstDueDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("Periodicity")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetGroupId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("BudgetEntries");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.Category", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BudgetGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetGroupId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryPayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("BudgetEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("PaidAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetEntryId", "DueDate")
+                        .IsUnique();
+
+                    b.ToTable("EntryPayments");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("BudgetGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DayOfMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<int>("Periodicity")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetGroupId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("EntryTemplates");
+                });
+
             modelBuilder.Entity("FamilyBudget.Web.Data.BudgetGroup", b =>
                 {
                     b.Property<int>("Id")
@@ -101,6 +250,9 @@ namespace FamilyBudget.Web.Data.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("DefaultCategoriesCreated")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -262,6 +414,64 @@ namespace FamilyBudget.Web.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.BudgetEntry", b =>
+                {
+                    b.HasOne("FamilyBudget.Web.Data.BudgetGroup", "BudgetGroup")
+                        .WithMany()
+                        .HasForeignKey("BudgetGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FamilyBudget.Web.Data.Budget.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BudgetGroup");
+
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.Category", b =>
+                {
+                    b.HasOne("FamilyBudget.Web.Data.BudgetGroup", "BudgetGroup")
+                        .WithMany()
+                        .HasForeignKey("BudgetGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BudgetGroup");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryPayment", b =>
+                {
+                    b.HasOne("FamilyBudget.Web.Data.Budget.BudgetEntry", "BudgetEntry")
+                        .WithMany("Payments")
+                        .HasForeignKey("BudgetEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BudgetEntry");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryTemplate", b =>
+                {
+                    b.HasOne("FamilyBudget.Web.Data.BudgetGroup", "BudgetGroup")
+                        .WithMany()
+                        .HasForeignKey("BudgetGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FamilyBudget.Web.Data.Budget.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BudgetGroup");
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("FamilyBudget.Web.Data.BudgetGroupMembership", b =>
                 {
                     b.HasOne("FamilyBudget.Web.Data.BudgetGroup", "BudgetGroup")
@@ -335,6 +545,11 @@ namespace FamilyBudget.Web.Data.Migrations
             modelBuilder.Entity("FamilyBudget.Web.Data.ApplicationUser", b =>
                 {
                     b.Navigation("BudgetGroupMemberships");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.BudgetEntry", b =>
+                {
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("FamilyBudget.Web.Data.BudgetGroup", b =>
