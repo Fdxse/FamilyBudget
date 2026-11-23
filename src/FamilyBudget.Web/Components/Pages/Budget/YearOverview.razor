@@ -1,0 +1,277 @@
+@page "/grupp/{GroupId:int}/ar"
+@page "/grupp/{GroupId:int}/ar/{Year:int}"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject BudgetOutcomeCalculator OutcomeCalculator
+
+<PageTitle>År @shownYear</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="ar" />
+
+    @* Year navigation *@
+    <div class="d-flex align-items-center gap-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@($"grupp/{GroupId}/ar/{shownYear - 1}")">‹ @(shownYear - 1)</a>
+        <h2 class="h4 mb-0">År @shownYear</h2>
+        <a class="btn btn-outline-secondary btn-sm" href="@($"grupp/{GroupId}/ar/{shownYear + 1}")">@(shownYear + 1) ›</a>
+    </div>
+
+    @* Summary of the year *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-4">
+            <div class="card"><div class="card-body">
+                <div class="text-muted small">Inkomster</div>
+                <div class="fs-5">@BudgetTexts.Money(yearIncome)</div>
+            </div></div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card"><div class="card-body">
+                <div class="text-muted small">Utgifter</div>
+                <div class="fs-5">@BudgetTexts.Money(yearExpenses)</div>
+            </div></div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card"><div class="card-body">
+                <div class="text-muted small">Netto</div>
+                <div class="fs-5 @(yearIncome - yearExpenses < 0 ? "text-danger" : "text-success")">@BudgetTexts.Money(yearIncome - yearExpenses)</div>
+            </div></div>
+        </div>
+    </div>
+    <p class="form-text">Betalda poster räknas med betalt belopp, obetalda med förväntat belopp.</p>
+
+    <h3 class="h5">Per månad</h3>
+    @if (monthChart is not null)
+    {
+        <BudgetChart Definition="monthChart" Height="300" Description="@($"Inkomster, utgifter och netto per månad {shownYear}")" />
+    }
+
+    <div class="table-responsive mt-3 mb-4">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Månad</th>
+                    <th class="text-end">Inkomster</th>
+                    <th class="text-end">Utgifter</th>
+                    <th class="text-end">Netto</th>
+                    <th class="text-end">Obetalt</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var monthSummary in monthSummaries)
+                {
+                    <tr>
+                        <td><a href="@($"grupp/{GroupId}/manad/{shownYear}/{monthSummary.Month}")">@BudgetTexts.MonthTitle(shownYear, monthSummary.Month)</a></td>
+                        <td class="text-end">@BudgetTexts.Money(monthSummary.Income)</td>
+                        <td class="text-end">@BudgetTexts.Money(monthSummary.Expenses)</td>
+                        <td class="text-end @(monthSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.Money(monthSummary.Net)</td>
+                        <td class="text-end text-muted">@(monthSummary.UnpaidExpenses > 0 ? BudgetTexts.Money(monthSummary.UnpaidExpenses) : "")</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr class="fw-semibold">
+                    <td>Totalt</td>
+                    <td class="text-end">@BudgetTexts.Money(yearIncome)</td>
+                    <td class="text-end">@BudgetTexts.Money(yearExpenses)</td>
+                    <td class="text-end">@BudgetTexts.Money(yearIncome - yearExpenses)</td>
+                    <td class="text-end text-muted">@BudgetTexts.Money(monthSummaries.Sum(monthSummary => monthSummary.UnpaidExpenses))</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    @* Category × month table *@
+    <div class="d-flex align-items-center gap-3 mb-2">
+        <h3 class="h5 mb-0">Per kategori och månad</h3>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Visa utgifter eller inkomster">
+            <button class="btn @(shownKind == EntryKind.Expense ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => ShowKind(EntryKind.Expense)">Utgifter</button>
+            <button class="btn @(shownKind == EntryKind.Income ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => ShowKind(EntryKind.Income)">Inkomster</button>
+        </div>
+    </div>
+    <p class="form-text">Belopp i hela kronor. Rött = över månadsbudgeten för kategorin (sätts under fliken <a href="@($"grupp/{GroupId}/budget")">Budget</a>).</p>
+
+    @if (categoryRows.Count == 0)
+    {
+        <p class="text-muted">Inget registrerat det här året.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle small year-category-table">
+                <thead>
+                    <tr>
+                        <th>Kategori</th>
+                        @for (var month = 1; month <= 12; month++)
+                        {
+                            <th class="text-end">@BudgetTexts.ShortMonth(month)</th>
+                        }
+                        <th class="text-end">Totalt</th>
+                        <th class="text-end">Budget år</th>
+                        <th class="text-end">Kvar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var categoryRow in categoryRows)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@categoryRow.CategoryName</td>
+                            @for (var monthIndex = 0; monthIndex < 12; monthIndex++)
+                            {
+                                var monthAmount = categoryRow.AmountPerMonth[monthIndex];
+                                <td class="text-end @(IsOverBudget(categoryRow, monthAmount) ? "text-danger fw-semibold" : "")">
+                                    @(monthAmount == 0 ? "" : BudgetTexts.WholeKronor(monthAmount))
+                                </td>
+                            }
+                            <td class="text-end fw-semibold">@BudgetTexts.WholeKronor(categoryRow.Total)</td>
+                            <td class="text-end text-muted">@(categoryRow.MonthlyBudget is { } monthlyBudget ? BudgetTexts.WholeKronor(monthlyBudget * 12) : "")</td>
+                            <td class="text-end">
+                                @if (categoryRow.MonthlyBudget is { } budgetPerMonth)
+                                {
+                                    var leftOfBudget = (budgetPerMonth * 12) - categoryRow.Total;
+                                    <span class="@(leftOfBudget < 0 ? "text-danger" : "text-success")">@BudgetTexts.WholeKronor(leftOfBudget)</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-semibold">
+                        <td>Totalt</td>
+                        @for (var monthIndex = 0; monthIndex < 12; monthIndex++)
+                        {
+                            var columnIndex = monthIndex;
+                            <td class="text-end">@BudgetTexts.WholeKronor(categoryRows.Sum(categoryRow => categoryRow.AmountPerMonth[columnIndex]))</td>
+                        }
+                        <td class="text-end">@BudgetTexts.WholeKronor(categoryRows.Sum(categoryRow => categoryRow.Total))</td>
+                        <td class="text-end text-muted">@BudgetTexts.WholeKronor(categoryRows.Sum(categoryRow => (categoryRow.MonthlyBudget ?? 0) * 12))</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private bool isLoading = true;
+    private BudgetGroup? budgetGroup;
+    private int shownYear;
+    private EntryKind shownKind = EntryKind.Expense;
+
+    // All occurrences in the shown year, kept so the category table can switch kind without reloading.
+    private List<OutcomeItem> yearItems = [];
+    private Dictionary<int, decimal> monthlyBudgets = [];
+
+    private decimal yearIncome;
+    private decimal yearExpenses;
+    private List<MonthSummary> monthSummaries = [];
+    private List<CategoryRow> categoryRows = [];
+    private ChartDefinition? monthChart;
+
+    [Parameter] public int GroupId { get; set; }
+    [Parameter] public int? Year { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        shownYear = Year is >= 1900 and <= 2200 ? Year.Value : DateTime.Today.Year;
+
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await LoadYearAsync();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadYearAsync()
+    {
+        var firstDayOfYear = new DateOnly(shownYear, 1, 1);
+        var lastDayOfYear = new DateOnly(shownYear, 12, 31);
+        yearItems = await OutcomeCalculator.GetItemsAsync(GroupId, firstDayOfYear, lastDayOfYear);
+        monthlyBudgets = await OutcomeCalculator.GetMonthlyBudgetsAsync(GroupId);
+
+        // One summary per month, January to December.
+        monthSummaries = Enumerable.Range(1, 12)
+            .Select(month =>
+            {
+                var itemsInMonth = yearItems.Where(item => item.DueDate.Month == month).ToList();
+                return new MonthSummary(
+                    month,
+                    itemsInMonth.Where(item => item.Kind == EntryKind.Income).Sum(item => item.EffectiveAmount),
+                    itemsInMonth.Where(item => item.Kind == EntryKind.Expense).Sum(item => item.EffectiveAmount),
+                    itemsInMonth.Where(item => item.Kind == EntryKind.Expense && !item.IsPaid).Sum(item => item.ExpectedAmount));
+            })
+            .ToList();
+
+        yearIncome = monthSummaries.Sum(monthSummary => monthSummary.Income);
+        yearExpenses = monthSummaries.Sum(monthSummary => monthSummary.Expenses);
+
+        // New object each load, so the chart component knows it must redraw.
+        monthChart = new ChartDefinition
+        {
+            Labels = Enumerable.Range(1, 12).Select(BudgetTexts.ShortMonth).ToList(),
+            Datasets =
+            [
+                new ChartDataset("Inkomster", monthSummaries.Select(monthSummary => monthSummary.Income).ToList(), ChartColors.Income),
+                new ChartDataset("Utgifter", monthSummaries.Select(monthSummary => monthSummary.Expenses).ToList(), ChartColors.Expense),
+                new ChartDataset("Netto", monthSummaries.Select(monthSummary => monthSummary.Net).ToList(), ChartColors.Net, "line"),
+            ],
+        };
+
+        BuildCategoryRows();
+    }
+
+    private void ShowKind(EntryKind kind)
+    {
+        shownKind = kind;
+        BuildCategoryRows();
+    }
+
+    /// <summary>Sums the shown kind per category and month. Entries without category end up under "Utan kategori".</summary>
+    private void BuildCategoryRows()
+    {
+        categoryRows = yearItems
+            .Where(item => item.Kind == shownKind)
+            .GroupBy(item => (item.CategoryId, CategoryName: item.CategoryName ?? "Utan kategori"))
+            .Select(categoryGroup =>
+            {
+                var amountPerMonth = new decimal[12];
+                foreach (var item in categoryGroup)
+                {
+                    amountPerMonth[item.DueDate.Month - 1] += item.EffectiveAmount;
+                }
+                decimal? monthlyBudget = categoryGroup.Key.CategoryId is { } categoryId && monthlyBudgets.TryGetValue(categoryId, out var budgetAmount)
+                    ? budgetAmount
+                    : null;
+                return new CategoryRow(categoryGroup.Key.CategoryName, amountPerMonth, monthlyBudget);
+            })
+            .OrderByDescending(categoryRow => categoryRow.Total)
+            .ToList();
+    }
+
+    /// <summary>Only expenses can be "over budget"; for incomes more is better.</summary>
+    private bool IsOverBudget(CategoryRow categoryRow, decimal monthAmount) =>
+        shownKind == EntryKind.Expense && categoryRow.MonthlyBudget is { } monthlyBudget && monthAmount > monthlyBudget;
+
+    private sealed record MonthSummary(int Month, decimal Income, decimal Expenses, decimal UnpaidExpenses)
+    {
+        public decimal Net => Income - Expenses;
+    }
+
+    private sealed record CategoryRow(string CategoryName, decimal[] AmountPerMonth, decimal? MonthlyBudget)
+    {
+        public decimal Total => AmountPerMonth.Sum();
+    }
+}

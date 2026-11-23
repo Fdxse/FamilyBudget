@@ -32,6 +32,8 @@ builder.Services.AddDbContextFactory<FamilyBudgetDbContext>(options =>
 
 // --- Budget services ------------------------------------------------------
 builder.Services.AddScoped<BudgetGroupAccess>();
+// Shared outcome calculation for year overview, budget and statistics pages.
+builder.Services.AddScoped<BudgetOutcomeCalculator>();
 
 // --- Login (ASP.NET Core Identity) -----------------------------------------
 // Users log in with a user name and password; the session is kept in a cookie.

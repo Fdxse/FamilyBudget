@@ -166,6 +166,34 @@ namespace FamilyBudget.Web.Data.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.CategoryBudget", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BudgetGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("MonthlyAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("BudgetGroupId", "CategoryId")
+                        .IsUnique();
+
+                    b.ToTable("CategoryBudgets");
+                });
+
             modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryPayment", b =>
                 {
                     b.Property<int>("Id")
@@ -441,6 +469,25 @@ namespace FamilyBudget.Web.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("BudgetGroup");
+                });
+
+            modelBuilder.Entity("FamilyBudget.Web.Data.Budget.CategoryBudget", b =>
+                {
+                    b.HasOne("FamilyBudget.Web.Data.BudgetGroup", "BudgetGroup")
+                        .WithMany()
+                        .HasForeignKey("BudgetGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FamilyBudget.Web.Data.Budget.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BudgetGroup");
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("FamilyBudget.Web.Data.Budget.EntryPayment", b =>

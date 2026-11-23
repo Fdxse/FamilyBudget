@@ -1,0 +1,51 @@
+@* Draws a Chart.js chart from a ChartDefinition. Redraws when a new definition object is passed in. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JavaScript
+
+<div class="budget-chart" style="height: @(Height)px">
+    <canvas @ref="canvasElement" role="img" aria-label="@Description"></canvas>
+</div>
+
+@code {
+    private ElementReference canvasElement;
+    private IJSObjectReference? chartModule;
+
+    // The definition that is currently drawn, to avoid redrawing on every render.
+    private ChartDefinition? drawnDefinition;
+
+    [Parameter, EditorRequired] public ChartDefinition Definition { get; set; } = default!;
+
+    /// <summary>Height of the chart area in pixels.</summary>
+    [Parameter] public int Height { get; set; } = 300;
+
+    /// <summary>Short text for screen readers describing what the chart shows.</summary>
+    [Parameter] public string Description { get; set; } = "Diagram";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (ReferenceEquals(drawnDefinition, Definition))
+        {
+            return;
+        }
+        chartModule ??= await JavaScript.InvokeAsync<IJSObjectReference>("import", "./js/charts.js");
+        await chartModule.InvokeVoidAsync("renderChart", canvasElement, Definition);
+        drawnDefinition = Definition;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (chartModule is null)
+        {
+            return;
+        }
+        try
+        {
+            await chartModule.InvokeVoidAsync("destroyChart", canvasElement);
+            await chartModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is already gone; nothing to clean up.
+        }
+    }
+}

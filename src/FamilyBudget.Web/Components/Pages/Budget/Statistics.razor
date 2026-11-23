@@ -1,0 +1,281 @@
+@page "/grupp/{GroupId:int}/statistik"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject BudgetOutcomeCalculator OutcomeCalculator
+
+<PageTitle>Statistik</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="statistik" />
+
+    @if (yearSummaries.Count == 0)
+    {
+        <p class="text-muted">Det finns inget registrerat ännu, så det finns ingen statistik att visa.</p>
+    }
+    else
+    {
+        @* ---- Year over year ---- *@
+        <h2 class="h5">År för år</h2>
+        @if (yearChart is not null)
+        {
+            <BudgetChart Definition="yearChart" Height="320" Description="Inkomster, utgifter och netto per år" />
+        }
+
+        <div class="table-responsive mt-3 mb-4">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>År</th>
+                        <th class="text-end">Inkomster</th>
+                        <th class="text-end">Utgifter</th>
+                        <th class="text-end">Netto</th>
+                        <th class="text-end">Utgifter per månad</th>
+                        <th class="text-end">Förändring utgifter</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var yearIndex = yearSummaries.Count - 1; yearIndex >= 0; yearIndex--)
+                    {
+                        var yearSummary = yearSummaries[yearIndex];
+                        var previousYear = yearIndex > 0 ? yearSummaries[yearIndex - 1] : null;
+                        <tr>
+                            <td><a href="@($"grupp/{GroupId}/ar/{yearSummary.Year}")">@yearSummary.Year</a></td>
+                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Income)</td>
+                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses)</td>
+                            <td class="text-end @(yearSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.WholeKronor(yearSummary.Net)</td>
+                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses / 12)</td>
+                            <td class="text-end text-nowrap">@ChangeText(previousYear?.Expenses, yearSummary.Expenses)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* ---- One chosen year in detail ---- *@
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <h2 class="h5 mb-0">Utgifter per kategori</h2>
+            <select class="form-select form-select-sm w-auto" value="@selectedYear" @onchange="SelectYearAsync" aria-label="Välj år">
+                @foreach (var yearSummary in yearSummaries.AsEnumerable().Reverse())
+                {
+                    <option value="@yearSummary.Year">@yearSummary.Year</option>
+                }
+            </select>
+        </div>
+
+        @if (categoryChart is null)
+        {
+            <p class="text-muted">Inga utgifter @selectedYear.</p>
+        }
+        else
+        {
+            <div class="row g-4">
+                <div class="col-lg-7">
+                    <BudgetChart Definition="categoryChart" Height="@Math.Max(220, categoryShares.Count * 30 + 40)" Description="@($"Utgifter per kategori {selectedYear}")" />
+                </div>
+                <div class="col-lg-5">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Kategori</th>
+                                <th class="text-end">Belopp</th>
+                                <th class="text-end">Andel</th>
+                                <th class="text-end">Mot året innan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var categoryShare in categoryShares)
+                            {
+                                <tr>
+                                    <td>@categoryShare.CategoryName</td>
+                                    <td class="text-end">@BudgetTexts.WholeKronor(categoryShare.Amount)</td>
+                                    <td class="text-end text-nowrap">@categoryShare.SharePercent.ToString("0.0") %</td>
+                                    <td class="text-end text-nowrap">@ChangeText(categoryShare.PreviousYearAmount, categoryShare.Amount)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <h2 class="h5 mt-4">Största utgifterna @selectedYear</h2>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead>
+                        <tr>
+                            <th>Datum</th>
+                            <th>Namn</th>
+                            <th>Kategori</th>
+                            <th class="text-end">Belopp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var largeExpense in largestExpenses)
+                        {
+                            <tr>
+                                <td>@BudgetTexts.Date(largeExpense.DueDate)</td>
+                                <td><a href="@($"grupp/{GroupId}/poster/{largeExpense.EntryId}")">@largeExpense.EntryName</a></td>
+                                <td>@largeExpense.CategoryName</td>
+                                <td class="text-end">@BudgetTexts.Money(largeExpense.EffectiveAmount)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    // How many of the biggest single expenses to list for the chosen year.
+    private const int LargestExpenseCount = 10;
+
+    private bool isLoading = true;
+    private BudgetGroup? budgetGroup;
+
+    // Every occurrence from the group's first entry to the end of the current year.
+    private List<OutcomeItem> allItems = [];
+
+    private List<YearSummary> yearSummaries = [];
+    private ChartDefinition? yearChart;
+
+    private int selectedYear;
+    private List<CategoryShare> categoryShares = [];
+    private ChartDefinition? categoryChart;
+    private List<OutcomeItem> largestExpenses = [];
+
+    [Parameter] public int GroupId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await LoadAsync();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var dateSpan = await OutcomeCalculator.GetDateSpanAsync(GroupId);
+        if (dateSpan is null)
+        {
+            yearSummaries = [];
+            return;
+        }
+
+        // Recurring entries go on forever, so stop at the end of this year (or of the last one-off entry, if later).
+        var currentYear = DateTime.Today.Year;
+        var lastYear = Math.Max(currentYear, dateSpan.Value.LastDate.Year);
+        var firstYear = dateSpan.Value.FirstDate.Year;
+        allItems = await OutcomeCalculator.GetItemsAsync(GroupId, new DateOnly(firstYear, 1, 1), new DateOnly(lastYear, 12, 31));
+
+        yearSummaries = Enumerable.Range(firstYear, lastYear - firstYear + 1)
+            .Select(year =>
+            {
+                var itemsInYear = allItems.Where(item => item.DueDate.Year == year).ToList();
+                return new YearSummary(
+                    year,
+                    itemsInYear.Where(item => item.Kind == EntryKind.Income).Sum(item => item.EffectiveAmount),
+                    itemsInYear.Where(item => item.Kind == EntryKind.Expense).Sum(item => item.EffectiveAmount));
+            })
+            .ToList();
+
+        yearChart = new ChartDefinition
+        {
+            Labels = yearSummaries.Select(yearSummary => yearSummary.Year.ToString()).ToList(),
+            Datasets =
+            [
+                new ChartDataset("Inkomster", yearSummaries.Select(yearSummary => yearSummary.Income).ToList(), ChartColors.Income),
+                new ChartDataset("Utgifter", yearSummaries.Select(yearSummary => yearSummary.Expenses).ToList(), ChartColors.Expense),
+                new ChartDataset("Netto", yearSummaries.Select(yearSummary => yearSummary.Net).ToList(), ChartColors.Net, "line"),
+            ],
+        };
+
+        // Start on the current year if it has data, otherwise the latest year that has.
+        selectedYear = yearSummaries.Any(yearSummary => yearSummary.Year == currentYear && yearSummary.Expenses > 0)
+            ? currentYear
+            : yearSummaries.LastOrDefault(yearSummary => yearSummary.Expenses > 0)?.Year ?? currentYear;
+        BuildSelectedYear();
+    }
+
+    private Task SelectYearAsync(ChangeEventArgs changeEvent)
+    {
+        if (int.TryParse(changeEvent.Value?.ToString(), out var chosenYear))
+        {
+            selectedYear = chosenYear;
+            BuildSelectedYear();
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Category breakdown and largest expenses for <see cref="selectedYear"/>.</summary>
+    private void BuildSelectedYear()
+    {
+        var expensesInYear = allItems
+            .Where(item => item.Kind == EntryKind.Expense && item.DueDate.Year == selectedYear)
+            .ToList();
+        var yearTotal = expensesInYear.Sum(item => item.EffectiveAmount);
+
+        // Last year's amount per category name, for the comparison column.
+        var previousYearByCategory = allItems
+            .Where(item => item.Kind == EntryKind.Expense && item.DueDate.Year == selectedYear - 1)
+            .GroupBy(item => item.CategoryName ?? "Utan kategori")
+            .ToDictionary(categoryGroup => categoryGroup.Key, categoryGroup => categoryGroup.Sum(item => item.EffectiveAmount));
+
+        categoryShares = expensesInYear
+            .GroupBy(item => item.CategoryName ?? "Utan kategori")
+            .Select(categoryGroup =>
+            {
+                var categoryAmount = categoryGroup.Sum(item => item.EffectiveAmount);
+                decimal? previousYearAmount = previousYearByCategory.TryGetValue(categoryGroup.Key, out var previousAmount) ? previousAmount : null;
+                var sharePercent = yearTotal == 0 ? 0 : categoryAmount / yearTotal * 100;
+                return new CategoryShare(categoryGroup.Key, categoryAmount, sharePercent, previousYearAmount);
+            })
+            .OrderByDescending(categoryShare => categoryShare.Amount)
+            .ToList();
+
+        // One series, so one color: the bar length carries the comparison.
+        categoryChart = categoryShares.Count == 0 ? null : new ChartDefinition
+        {
+            Horizontal = true,
+            Labels = categoryShares.Select(categoryShare => categoryShare.CategoryName).ToList(),
+            Datasets = [new ChartDataset($"Utgifter {selectedYear}", categoryShares.Select(categoryShare => categoryShare.Amount).ToList(), ChartColors.Expense)],
+        };
+
+        largestExpenses = expensesInYear
+            .OrderByDescending(item => item.EffectiveAmount)
+            .Take(LargestExpenseCount)
+            .ToList();
+    }
+
+    /// <summary>Change in percent from <paramref name="previousAmount"/>, e.g. "+12 %", or empty when there is nothing to compare with.</summary>
+    private static string ChangeText(decimal? previousAmount, decimal currentAmount)
+    {
+        if (previousAmount is not > 0)
+        {
+            return string.Empty;
+        }
+        var changePercent = (currentAmount - previousAmount.Value) / previousAmount.Value * 100;
+        return $"{(changePercent >= 0 ? "+" : "−")}{Math.Abs(changePercent):0} %";
+    }
+
+    private sealed record YearSummary(int Year, decimal Income, decimal Expenses)
+    {
+        public decimal Net => Income - Expenses;
+    }
+
+    private sealed record CategoryShare(string CategoryName, decimal Amount, decimal SharePercent, decimal? PreviousYearAmount);
+}
