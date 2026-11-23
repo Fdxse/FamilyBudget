@@ -124,6 +124,33 @@ det som inte ska med och spara, så skapas alla poster på en gång. Poster som 
   Under **Per namn** summeras allt med samma namn på en rad. Klicka dig ner från hela perioden till år och månad,
   eller klicka på ett namn för att se det över tiden.
 
+## Backup
+
+`deploy/backup.sh` sparar en mapp per körning under `/volume1/Ekonomi/FamilyBudget/backup` med
+- `database.sql.gz`: hela databasen,
+- `keys.tar.gz`: nycklarna för inloggningen,
+- `env.txt`: en kopia av `.env` (innehåller lösenorden, behövs för att återställa på en ny NAS).
+
+Mappen kan bara läsas av root. Backuper äldre än 60 dagar tas bort (ändra med `BACKUP_KEEP_DAYS` i `.env`).
+`update.sh` tar också en backup innan varje uppdatering och avbryter om den misslyckas
+(kör `SKIP_BACKUP=1 ./deploy/update.sh` för att hoppa över den).
+
+**Daglig backup i DSM:** Kontrollpanelen › Aktivitetsschemaläggare › Skapa › Schemalagd aktivitet › Användardefinierat skript.
+- Användare: `root`
+- Schema: dagligen, t.ex. 03:00
+- Skript: `bash /volume1/Ekonomi/FamilyBudget/app/deploy/backup.sh`
+- Under Inställningar: bocka i "Skicka körningsinformation via e-post" och "endast när skriptet avslutas onormalt" om du vill få mejl när något går fel.
+
+**Utanför NAS:en:** backupmappen ligger på samma diskar som databasen. Ta med sharen `Ekonomi` i Hyper Backup
+(till USB-disk eller molnet) så klarar sig datan även om NAS:en går sönder.
+
+**Återställa** (ersätter all data med backupen):
+
+```bash
+cd /volume1/Ekonomi/FamilyBudget/app
+sudo bash deploy/restore.sh /volume1/Ekonomi/FamilyBudget/backup/2026-11-23_030000
+```
+
 ## Databasändringar (migreringar)
 
 Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny
