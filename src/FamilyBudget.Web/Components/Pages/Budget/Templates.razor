@@ -28,7 +28,7 @@ else
     else
     {
         <div class="table-responsive">
-            <table class="table align-middle">
+            <table class="table-cards table align-middle">
                 <thead>
                     <tr>
                         <th>Namn</th>
@@ -44,15 +44,15 @@ else
                     @foreach (var template in templates)
                     {
                         <tr>
-                            <td>@template.Name</td>
-                            <td>
+                            <td data-card-title>@template.Name</td>
+                            <td data-label="Typ">
                                 @* Same colors as the template buttons on the "Fakturor och inkomster" tab. *@
                                 <span class="badge @(template.Kind == EntryKind.Income ? "text-bg-success" : "text-bg-primary")">@BudgetTexts.Kind(template.Kind)</span>
                             </td>
-                            <td>@template.Category?.Name</td>
-                            <td>@BudgetTexts.Periodicity(template.Periodicity)</td>
-                            <td>@(template.DayOfMonth?.ToString() ?? "–")</td>
-                            <td class="text-end">@BudgetTexts.Money(template.Amount)</td>
+                            <td data-label="Kategori">@template.Category?.Name</td>
+                            <td data-label="Hur ofta">@BudgetTexts.Periodicity(template.Periodicity)</td>
+                            <td data-label="Dag">@(template.DayOfMonth?.ToString() ?? "–")</td>
+                            <td data-label="Belopp" class="text-end">@BudgetTexts.Money(template.Amount)</td>
                             <td class="text-nowrap text-end">
                                 <a class="btn btn-sm @(template.Kind == EntryKind.Income ? "btn-success" : "btn-primary")" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">Lägg till</a>
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEditing(template)">Ändra</button>

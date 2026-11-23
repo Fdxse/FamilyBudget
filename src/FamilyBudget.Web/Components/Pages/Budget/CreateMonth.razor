@@ -21,10 +21,10 @@ else
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="manad" />
 
     @* Month navigation *@
-    <div class="d-flex align-items-center gap-3 mb-3">
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
+    <div class="d-flex flex-wrap align-items-center gap-2 gap-sm-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)" aria-label="Föregående månad">‹<span class="d-none d-sm-inline"> Föregående</span></a>
         <h2 class="h4 mb-0">Skapa @BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
-        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)" aria-label="Nästa månad"><span class="d-none d-sm-inline">Nästa </span>›</a>
     </div>
 
     <p class="form-text">
@@ -51,7 +51,7 @@ else
         else
         {
             <div class="table-responsive">
-                <table class="table table-sm align-middle create-month-table">
+                <table class="table-cards table table-sm align-middle create-month-table">
                     <thead>
                         <tr>
                             <th style="width: 2.5rem"><span class="visually-hidden">Ta med</span></th>
@@ -66,12 +66,12 @@ else
                         @foreach (var proposalRow in rowsOfKind)
                         {
                             <tr class="@(proposalRow.IsIncluded ? "" : "text-muted")">
-                                <td>
+                                <td data-label="Ta med">
                                     <input type="checkbox" class="form-check-input" @bind="proposalRow.IsIncluded"
                                            aria-label="@($"Ta med {proposalRow.Name}")" />
                                 </td>
-                                <td><input class="form-control form-control-sm" @bind="proposalRow.Name" aria-label="Namn" /></td>
-                                <td>
+                                <td data-label="Namn"><input class="form-control form-control-sm" @bind="proposalRow.Name" aria-label="Namn" /></td>
+                                <td data-label="Kategori">
                                     <select class="form-select form-select-sm" @bind="proposalRow.CategoryId" aria-label="Kategori">
                                         <option value="">Ingen kategori</option>
                                         @foreach (var category in categories)
@@ -80,9 +80,9 @@ else
                                         }
                                     </select>
                                 </td>
-                                <td><input type="date" class="form-control form-control-sm" @bind="proposalRow.DueDate" aria-label="Datum" /></td>
-                                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="proposalRow.Amount" aria-label="Belopp" /></td>
-                                <td class="small text-muted text-nowrap">
+                                <td data-label="Datum"><input type="date" class="form-control form-control-sm" @bind="proposalRow.DueDate" aria-label="Datum" /></td>
+                                <td data-label="Belopp"><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="proposalRow.Amount" aria-label="Belopp" /></td>
+                                <td data-label="Källa" class="small text-muted text-nowrap">
                                     @proposalRow.Source
                                     @if (proposalRow.AlreadyExists)
                                     {
@@ -95,8 +95,8 @@ else
                     <tfoot>
                         <tr class="fw-semibold">
                             <td></td>
-                            <td colspan="3">Totalt (@rowsOfKind.Count(proposalRow => proposalRow.IsIncluded) st)</td>
-                            <td class="text-end">@BudgetTexts.Money(rowsOfKind.Where(proposalRow => proposalRow.IsIncluded).Sum(proposalRow => proposalRow.Amount))</td>
+                            <td data-card-title colspan="3">Totalt (@rowsOfKind.Count(proposalRow => proposalRow.IsIncluded) st)</td>
+                            <td data-label="Belopp" class="text-end">@BudgetTexts.Money(rowsOfKind.Where(proposalRow => proposalRow.IsIncluded).Sum(proposalRow => proposalRow.Amount))</td>
                             <td></td>
                         </tr>
                     </tfoot>

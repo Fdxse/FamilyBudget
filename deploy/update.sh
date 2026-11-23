@@ -73,6 +73,14 @@ fi
 # plain Unix permissions afterwards: owner (the container user) may read/write.
 $sudo_prefix chmod 750 "$DATA_ROOT/mariadb" "$DATA_ROOT/keys"
 
+# Take a backup before a new version can change the database (migrations run at start-up).
+# Skipped on the very first install, when the database container does not exist yet.
+# Stops the update if the backup fails; run with SKIP_BACKUP=1 to update anyway.
+if [[ "${SKIP_BACKUP:-0}" != "1" ]] && $sudo_prefix docker ps --format '{{.Names}}' | grep -qx familybudget-database; then
+    echo "==> Backing up before the update"
+    bash "$repository_root/deploy/backup.sh"
+fi
+
 echo "==> Building web image"
 APP_GIT_COMMIT="$current_commit" $compose_command build --pull web
 

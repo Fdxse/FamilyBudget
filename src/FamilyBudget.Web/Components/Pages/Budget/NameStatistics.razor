@@ -88,7 +88,7 @@ else
 
             var filteredRows = FilteredNameRows();
             <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
+                <table class="table-cards table table-sm table-hover align-middle">
                     <thead>
                         <tr>
                             <th>Namn</th>
@@ -104,21 +104,21 @@ else
                         @foreach (var nameRow in filteredRows.Take(showAllNames ? int.MaxValue : DefaultRowCount))
                         {
                             <tr>
-                                <td><a href="@PageLink(Year, Month, nameRow.NameKey)">@nameRow.DisplayName</a></td>
-                                <td>@nameRow.CategoryName</td>
-                                <td class="text-end">@nameRow.Count</td>
-                                <td class="text-end">@BudgetTexts.WholeKronor(nameRow.Total)</td>
-                                <td class="text-end">@BudgetTexts.WholeKronor(nameRow.Total / nameRow.Count)</td>
-                                <td class="text-end text-nowrap">@((periodTotal == 0 ? 0 : nameRow.Total / periodTotal * 100).ToString("0.0")) %</td>
-                                <td class="text-end">@BudgetTexts.Date(nameRow.LastDate)</td>
+                                <td data-card-title><a href="@PageLink(Year, Month, nameRow.NameKey)">@nameRow.DisplayName</a></td>
+                                <td data-label="Kategori">@nameRow.CategoryName</td>
+                                <td data-label="Antal" class="text-end">@nameRow.Count</td>
+                                <td data-label="Summa" class="text-end">@BudgetTexts.WholeKronor(nameRow.Total)</td>
+                                <td data-label="Snitt" class="text-end">@BudgetTexts.WholeKronor(nameRow.Total / nameRow.Count)</td>
+                                <td data-label="Andel" class="text-end text-nowrap">@((periodTotal == 0 ? 0 : nameRow.Total / periodTotal * 100).ToString("0.0")) %</td>
+                                <td data-label="Senast" class="text-end">@BudgetTexts.Date(nameRow.LastDate)</td>
                             </tr>
                         }
                     </tbody>
                     <tfoot>
                         <tr class="fw-semibold">
-                            <td colspan="2">Totalt (@filteredRows.Count namn)</td>
-                            <td class="text-end">@filteredRows.Sum(nameRow => nameRow.Count)</td>
-                            <td class="text-end">@BudgetTexts.WholeKronor(filteredRows.Sum(nameRow => nameRow.Total))</td>
+                            <td data-card-title colspan="2">Totalt (@filteredRows.Count namn)</td>
+                            <td data-label="Antal" class="text-end">@filteredRows.Sum(nameRow => nameRow.Count)</td>
+                            <td data-label="Summa" class="text-end">@BudgetTexts.WholeKronor(filteredRows.Sum(nameRow => nameRow.Total))</td>
                             <td colspan="3"></td>
                         </tr>
                     </tfoot>
@@ -135,7 +135,7 @@ else
         @* Every occurrence of the chosen name in the period. *@
         <h2 class="h5">Alla tillfällen</h2>
         <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table-cards table table-sm align-middle">
                 <thead>
                     <tr>
                         <th>Datum</th>
@@ -149,18 +149,18 @@ else
                     @foreach (var item in periodItems.OrderByDescending(item => item.DueDate))
                     {
                         <tr>
-                            <td>@BudgetTexts.Date(item.DueDate)</td>
-                            <td><a href="@($"grupp/{GroupId}/poster/{item.EntryId}")">@item.EntryName</a></td>
-                            <td>@item.CategoryName</td>
-                            <td class="text-end">@BudgetTexts.Money(item.EffectiveAmount)</td>
+                            <td data-label="Datum">@BudgetTexts.Date(item.DueDate)</td>
+                            <td data-card-title><a href="@($"grupp/{GroupId}/poster/{item.EntryId}")">@item.EntryName</a></td>
+                            <td data-label="Kategori">@item.CategoryName</td>
+                            <td data-label="Belopp" class="text-end">@BudgetTexts.Money(item.EffectiveAmount)</td>
                             <td class="text-muted small">@(item.IsPaid ? "" : "ej betald")</td>
                         </tr>
                     }
                 </tbody>
                 <tfoot>
                     <tr class="fw-semibold">
-                        <td colspan="3">Totalt (@periodItems.Count st)</td>
-                        <td class="text-end">@BudgetTexts.Money(periodTotal)</td>
+                        <td data-card-title colspan="3">Totalt (@periodItems.Count st)</td>
+                        <td data-label="Belopp" class="text-end">@BudgetTexts.Money(periodTotal)</td>
                         <td></td>
                     </tr>
                 </tfoot>

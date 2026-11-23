@@ -16,7 +16,11 @@ else if (budgetGroup is null)
 else
 {
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="statistik" />
-    <StatisticsNav GroupId="GroupId" ActiveView="oversikt" />
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+        <StatisticsNav GroupId="GroupId" ActiveView="oversikt" />
+        @* Plain link (no Blazor navigation) so the browser downloads the file. *@
+        <a class="btn btn-sm btn-outline-success" href="@($"grupp/{GroupId}/excel")" data-enhance-nav="false">Ladda ner allt till Excel</a>
+    </div>
 
     @if (yearSummaries.Count == 0)
     {
@@ -32,7 +36,7 @@ else
         }
 
         <div class="table-responsive mt-3 mb-4">
-            <table class="table table-sm align-middle">
+            <table class="table-cards table table-sm align-middle">
                 <thead>
                     <tr>
                         <th>År</th>
@@ -49,12 +53,12 @@ else
                         var yearSummary = yearSummaries[yearIndex];
                         var previousYear = yearIndex > 0 ? yearSummaries[yearIndex - 1] : null;
                         <tr>
-                            <td><a href="@($"grupp/{GroupId}/ar/{yearSummary.Year}")">@yearSummary.Year</a></td>
-                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Income)</td>
-                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses)</td>
-                            <td class="text-end @(yearSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.WholeKronor(yearSummary.Net)</td>
-                            <td class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses / 12)</td>
-                            <td class="text-end text-nowrap">@ChangeText(previousYear?.Expenses, yearSummary.Expenses)</td>
+                            <td data-card-title><a href="@($"grupp/{GroupId}/ar/{yearSummary.Year}")">@yearSummary.Year</a></td>
+                            <td data-label="Inkomster" class="text-end">@BudgetTexts.WholeKronor(yearSummary.Income)</td>
+                            <td data-label="Utgifter" class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses)</td>
+                            <td data-label="Netto" class="text-end @(yearSummary.Net < 0 ? "text-danger" : "")">@BudgetTexts.WholeKronor(yearSummary.Net)</td>
+                            <td data-label="Utgifter per månad" class="text-end">@BudgetTexts.WholeKronor(yearSummary.Expenses / 12)</td>
+                            <td data-label="Förändring utgifter" class="text-end text-nowrap">@ChangeText(previousYear?.Expenses, yearSummary.Expenses)</td>
                         </tr>
                     }
                 </tbody>
@@ -109,7 +113,7 @@ else
 
             <h2 class="h5 mt-4">Största utgifterna @selectedYear</h2>
             <div class="table-responsive">
-                <table class="table table-sm align-middle">
+                <table class="table-cards table table-sm align-middle">
                     <thead>
                         <tr>
                             <th>Datum</th>
@@ -122,10 +126,10 @@ else
                         @foreach (var largeExpense in largestExpenses)
                         {
                             <tr>
-                                <td>@BudgetTexts.Date(largeExpense.DueDate)</td>
-                                <td><a href="@($"grupp/{GroupId}/poster/{largeExpense.EntryId}")">@largeExpense.EntryName</a></td>
-                                <td>@largeExpense.CategoryName</td>
-                                <td class="text-end">@BudgetTexts.Money(largeExpense.EffectiveAmount)</td>
+                                <td data-label="Datum">@BudgetTexts.Date(largeExpense.DueDate)</td>
+                                <td data-card-title><a href="@($"grupp/{GroupId}/poster/{largeExpense.EntryId}")">@largeExpense.EntryName</a></td>
+                                <td data-label="Kategori">@largeExpense.CategoryName</td>
+                                <td data-label="Belopp" class="text-end">@BudgetTexts.Money(largeExpense.EffectiveAmount)</td>
                             </tr>
                         }
                     </tbody>

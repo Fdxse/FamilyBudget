@@ -58,3 +58,105 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+/* ---------------------------------------------------------------------------
+   Phones: tables marked "table-cards" turn into one card per row.
+   Each cell shows its column name (data-label) on the left and the value on the right;
+   the cell marked data-card-title becomes the card's heading.
+   --------------------------------------------------------------------------- */
+@media (max-width: 767.98px) {
+    table.table-cards thead {
+        display: none;
+    }
+
+    table.table-cards,
+    table.table-cards tbody,
+    table.table-cards tfoot,
+    table.table-cards tr,
+    table.table-cards td {
+        display: block;
+        width: 100%;
+    }
+
+    table.table-cards tr {
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.5rem;
+        margin-bottom: 0.75rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    /* The totals row gets a light background so it stands apart from the cards. */
+    table.table-cards tfoot tr {
+        background-color: var(--bs-tertiary-bg);
+    }
+
+    table.table-cards td {
+        /* Some cells have a max width for the desktop table; a card row uses the full width. */
+        max-width: none !important;
+        border: none;
+        padding: 0.2rem 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        text-align: right !important;
+    }
+
+    table.table-cards td[data-label]::before {
+        content: attr(data-label);
+        color: var(--bs-secondary-color);
+        font-size: 0.875rem;
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    table.table-cards td[data-card-title] {
+        justify-content: flex-start;
+        font-weight: 600;
+        font-size: 1.05rem;
+        text-align: left !important;
+        flex-wrap: wrap;
+    }
+
+    /* Empty cells (spacers in the totals row, blank values) take no room. */
+    table.table-cards td:empty {
+        display: none;
+    }
+
+    /* Inputs inside a card share the row with their label. */
+    table.table-cards td > .form-control,
+    table.table-cards td > .form-select {
+        max-width: 65%;
+    }
+
+    /* Buttons go on their own line, left aligned. */
+    table.table-cards td:not([data-label]):not([data-card-title]) {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    /* Cards never need sideways scrolling. */
+    .table-responsive:has(> table.table-cards) {
+        overflow-x: visible;
+    }
+
+    /* Group tabs scroll sideways instead of wrapping onto three lines. */
+    .budget-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+    }
+}
+
+/* The category × month table keeps its columns; the category name stays visible while scrolling. */
+.year-category-table th:first-child,
+.year-category-table td:first-child {
+    position: sticky;
+    left: 0;
+    background-color: var(--bs-body-bg);
+    z-index: 1;
+}

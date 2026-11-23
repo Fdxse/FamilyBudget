@@ -56,7 +56,7 @@ else
         else
         {
             <div class="table-responsive">
-                <table class="table">
+                <table class="table-cards table">
                     <thead>
                         <tr>
                             <th>Namn</th>
@@ -70,18 +70,18 @@ else
                         @foreach (var entryRow in rowsOfKind)
                         {
                             <tr>
-                                <td><a href="@($"grupp/{GroupId}/poster/{entryRow.Entry.Id}")">@entryRow.Entry.Name</a></td>
-                                <td>@entryRow.Entry.Category?.Name</td>
-                                <td>@BudgetTexts.Periodicity(entryRow.Entry.Periodicity)</td>
-                                <td class="text-end">@BudgetTexts.Money(entryRow.Entry.Amount)</td>
-                                <td>@(entryRow.NextDueDate is { } nextDueDate ? BudgetTexts.Date(nextDueDate) : "Avslutad")</td>
+                                <td data-card-title><a href="@($"grupp/{GroupId}/poster/{entryRow.Entry.Id}")">@entryRow.Entry.Name</a></td>
+                                <td data-label="Kategori">@entryRow.Entry.Category?.Name</td>
+                                <td data-label="Periodicitet">@BudgetTexts.Periodicity(entryRow.Entry.Periodicity)</td>
+                                <td data-label="Belopp" class="text-end">@BudgetTexts.Money(entryRow.Entry.Amount)</td>
+                                <td data-label="Nästa förfallodag">@(entryRow.NextDueDate is { } nextDueDate ? BudgetTexts.Date(nextDueDate) : "Avslutad")</td>
                             </tr>
                         }
                     </tbody>
                     <tfoot>
                         <tr class="fw-semibold">
-                            <td colspan="3">Per månad i snitt (aktiva)</td>
-                            <td class="text-end">@BudgetTexts.Money(MonthlyAverage(rowsOfKind))</td>
+                            <td data-card-title colspan="3">Per månad i snitt (aktiva)</td>
+                            <td data-label="Per månad" class="text-end">@BudgetTexts.Money(MonthlyAverage(rowsOfKind))</td>
                             <td></td>
                         </tr>
                     </tfoot>

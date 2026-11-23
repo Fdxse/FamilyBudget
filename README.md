@@ -124,6 +124,39 @@ det som inte ska med och spara, så skapas alla poster på en gång. Poster som 
   Under **Per namn** summeras allt med samma namn på en rad. Klicka dig ner från hela perioden till år och månad,
   eller klicka på ett namn för att se det över tiden.
 
+## Ladda ner till Excel
+
+Under Statistik finns **Ladda ner allt till Excel** och i årsvyn **Ladda ner {år} till Excel**. Filen har fyra flikar:
+alla poster (med filter, färdiga för pivottabeller), summor per månad, utgifter per kategori och år, samt alla
+registrerade fakturor och inkomster.
+
+## Backup
+
+`deploy/backup.sh` sparar en mapp per körning under `/volume1/Ekonomi/FamilyBudget/backup` med
+- `database.sql.gz`: hela databasen,
+- `keys.tar.gz`: nycklarna för inloggningen,
+- `env.txt`: en kopia av `.env` (innehåller lösenorden, behövs för att återställa på en ny NAS).
+
+Mappen kan bara läsas av root. Backuper äldre än 60 dagar tas bort (ändra med `BACKUP_KEEP_DAYS` i `.env`).
+`update.sh` tar också en backup innan varje uppdatering och avbryter om den misslyckas
+(kör `SKIP_BACKUP=1 ./deploy/update.sh` för att hoppa över den).
+
+**Daglig backup i DSM:** Kontrollpanelen › Aktivitetsschemaläggare › Skapa › Schemalagd aktivitet › Användardefinierat skript.
+- Användare: `root`
+- Schema: dagligen, t.ex. 03:00
+- Skript: `bash /volume1/Ekonomi/FamilyBudget/app/deploy/backup.sh`
+- Under Inställningar: bocka i "Skicka körningsinformation via e-post" och "endast när skriptet avslutas onormalt" om du vill få mejl när något går fel.
+
+**Utanför NAS:en:** backupmappen ligger på samma diskar som databasen. Ta med sharen `Ekonomi` i Hyper Backup
+(till USB-disk eller molnet) så klarar sig datan även om NAS:en går sönder.
+
+**Återställa** (ersätter all data med backupen):
+
+```bash
+cd /volume1/Ekonomi/FamilyBudget/app
+sudo bash deploy/restore.sh /volume1/Ekonomi/FamilyBudget/backup/2026-11-23_030000
+```
+
 ## Databasändringar (migreringar)
 
 Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny
@@ -140,6 +173,7 @@ dotnet ef migrations add <Namn> --project src/FamilyBudget.Web --output-dir Data
 - `MySqlConnector` 2.6.2 (uppdaterad för att täppa till en känd sårbarhet i 2.4.0)
 - `Microsoft.AspNetCore.Identity.EntityFrameworkCore` 9.0.23 (inloggning och användare)
 - `Microsoft.EntityFrameworkCore.Design` 9.0.23 och verktyget `dotnet-ef` 9.0.23 (bara för att skapa migreringar)
+- `ClosedXML` 0.105.0 (MIT, skapar Excel-filerna)
 - Chart.js 4.6.1 (MIT, grafer). Filen ligger i `wwwroot/lib/chartjs` så appen inte behöver internet.
 
 Pomelo finns ännu inte i en version för EF Core 10, så appen använder EF Core 9 ovanpå .NET 10. Det fungerar fullt ut;
