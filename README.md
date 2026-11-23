@@ -18,8 +18,13 @@ Byggd i C# / ASP.NET Core (.NET 10, Blazor Server) med MariaDB, och körs i Dock
 
 1. **Paket i Package Center:** installera *Container Manager* och *Git Server* (det senare ger kommandot `git`).
 2. **SSH:** Kontrollpanelen → Terminal och SNMP → aktivera SSH. Din användare måste vara administratör.
-3. **Delad mapp för data:** Kontrollpanelen → Delad mapp → skapa t.ex. `familybudget` (blir `/volume1/familybudget`).
-   Hit hamnar databasfilerna (`mariadb/`) och nycklar för inloggning (`keys/`). Ta med mappen i din backup.
+3. **Delad mapp:** allt ligger i den delade mappen `Ekonomi` (`/volume1/Ekonomi`), med denna struktur:
+   ```
+   /volume1/Ekonomi/FamilyBudget/
+   ├── app/    # klon av GitHub-repot, skrivs över vid varje uppdatering
+   └── data/   # databasfiler (mariadb/) och inloggningsnycklar (keys/), ta med i backup
+   ```
+   Datamappen skapas automatiskt av `update.sh`.
 4. **Åtkomst till GitHub från NAS:en** (behövs om repot är privat). Logga in med SSH och skapa en nyckel:
    ```bash
    ssh-keygen -t ed25519 -f ~/.ssh/familybudget_deploy -N ""
@@ -33,9 +38,9 @@ Byggd i C# / ASP.NET Core (.NET 10, Blazor Server) med MariaDB, och körs i Dock
    ```
 5. **Klona repot:**
    ```bash
-   mkdir -p /volume1/docker && cd /volume1/docker
-   git clone git@github.com:Fdxse/FamilyBudget.git familybudget
-   cd familybudget
+   mkdir -p /volume1/Ekonomi/FamilyBudget && cd /volume1/Ekonomi/FamilyBudget
+   git clone git@github.com:Fdxse/FamilyBudget.git app
+   cd app
    cp .env.example .env
    vi .env    # sätt DATA_ROOT, lösenord och DEPLOY_BRANCH
    ```
@@ -61,6 +66,9 @@ Från Git Bash / Linux / macOS:
 ```bash
 ./deploy/remote-update.sh fredrik@192.168.1.10
 ```
+
+Skripten utgår från att repot ligger i `/volume1/Ekonomi/FamilyBudget/app`. Ligger det någon annanstans anger du
+`-NasRepositoryPath` (PowerShell) eller ett andra argument (bash).
 
 Skriptet loggar in på NAS:en, hämtar senaste koden från GitHub, bygger en ny image, startar om containrarna
 och väntar tills `/health` svarar `Healthy`. Om något går fel skrivs de sista loggraderna ut.
