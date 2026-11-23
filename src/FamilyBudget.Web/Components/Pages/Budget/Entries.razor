@@ -1,0 +1,142 @@
+@page "/grupp/{GroupId:int}/poster"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Fakturor och inkomster</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="poster" />
+
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a class="btn btn-primary" href="@($"grupp/{GroupId}/poster/ny?typ=utgift")">+ Ny faktura/utgift</a>
+        <a class="btn btn-success" href="@($"grupp/{GroupId}/poster/ny?typ=inkomst")">+ Ny inkomst</a>
+    </div>
+
+    @* Quick add from templates *@
+    @if (templates.Count > 0)
+    {
+        <div class="mb-4">
+            <span class="text-muted me-2">Lägg till från mall:</span>
+            @foreach (var template in templates)
+            {
+                <a class="btn btn-sm btn-outline-secondary me-1 mb-1" href="@($"grupp/{GroupId}/poster/ny?mall={template.Id}")">
+                    + @template.Name
+                </a>
+            }
+        </div>
+    }
+
+    <div class="btn-group mb-3" role="group" aria-label="Visa">
+        <button class="btn btn-sm @(showEnded ? "btn-outline-secondary" : "btn-secondary")" @onclick="() => showEnded = false">Aktiva</button>
+        <button class="btn btn-sm @(showEnded ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => showEnded = true">Alla, även avslutade</button>
+    </div>
+
+    @foreach (var kind in new[] { EntryKind.Income, EntryKind.Expense })
+    {
+        var rowsOfKind = entryRows.Where(entryRow => entryRow.Entry.Kind == kind && (showEnded || entryRow.NextDueDate is not null)).ToList();
+
+        <h2 class="h5 mt-3">@(kind == EntryKind.Income ? "Inkomster" : "Fakturor och utgifter")</h2>
+        @if (rowsOfKind.Count == 0)
+        {
+            <p class="text-muted">Inga ännu.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Namn</th>
+                            <th>Kategori</th>
+                            <th>Periodicitet</th>
+                            <th class="text-end">Belopp</th>
+                            <th>Nästa förfallodag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entryRow in rowsOfKind)
+                        {
+                            <tr>
+                                <td><a href="@($"grupp/{GroupId}/poster/{entryRow.Entry.Id}")">@entryRow.Entry.Name</a></td>
+                                <td>@entryRow.Entry.Category?.Name</td>
+                                <td>@BudgetTexts.Periodicity(entryRow.Entry.Periodicity)</td>
+                                <td class="text-end">@BudgetTexts.Money(entryRow.Entry.Amount)</td>
+                                <td>@(entryRow.NextDueDate is { } nextDueDate ? BudgetTexts.Date(nextDueDate) : "Avslutad")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-semibold">
+                            <td colspan="3">Per månad i snitt (aktiva)</td>
+                            <td class="text-end">@BudgetTexts.Money(MonthlyAverage(rowsOfKind))</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    private bool isLoading = true;
+    private bool showEnded;
+    private BudgetGroup? budgetGroup;
+    private List<EntryRow> entryRows = [];
+    private List<EntryTemplate> templates = [];
+
+    [Parameter] public int GroupId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+            var entries = await databaseContext.BudgetEntries
+                .Where(entry => entry.BudgetGroupId == GroupId)
+                .Include(entry => entry.Category)
+                .OrderBy(entry => entry.Name)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            entryRows = entries
+                .Select(entry => new EntryRow(entry, DueDateCalculator.GetNextDueDate(entry, today)))
+                .ToList();
+
+            templates = await databaseContext.EntryTemplates
+                .Where(template => template.BudgetGroupId == GroupId)
+                .OrderBy(template => template.Name)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+        isLoading = false;
+    }
+
+    /// <summary>
+    /// What the active entries cost (or bring in) per month on average,
+    /// e.g. a yearly 6 000 kr insurance counts as 500 kr per month. One-off entries are left out.
+    /// </summary>
+    private static decimal MonthlyAverage(IEnumerable<EntryRow> rows) =>
+        rows.Where(entryRow => entryRow.NextDueDate is not null)
+            .Sum(entryRow => DueDateCalculator.MonthsBetweenDueDates(entryRow.Entry.Periodicity) is { } monthsBetween
+                ? entryRow.Entry.Amount / monthsBetween
+                : 0m);
+
+    private sealed record EntryRow(BudgetEntry Entry, DateOnly? NextDueDate);
+}

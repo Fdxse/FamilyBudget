@@ -1,10 +1,16 @@
 using FamilyBudget.Web.Components;
 using FamilyBudget.Web.Data;
 using FamilyBudget.Web.Security;
+using FamilyBudget.Web.Services;
+using System.Globalization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+
+// The app is in Swedish: format dates and numbers the Swedish way everywhere.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.GetCultureInfo("sv-SE");
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("sv-SE");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +29,9 @@ var mariaDbServerVersion = new MariaDbServerVersion(Version.Parse(mariaDbVersion
 // circuit (browser tab) lives a long time and should not share one DbContext.
 builder.Services.AddDbContextFactory<FamilyBudgetDbContext>(options =>
     options.UseMySql(connectionString, mariaDbServerVersion));
+
+// --- Budget services ------------------------------------------------------
+builder.Services.AddScoped<BudgetGroupAccess>();
 
 // --- Login (ASP.NET Core Identity) -----------------------------------------
 // Users log in with a user name and password; the session is kept in a cookie.

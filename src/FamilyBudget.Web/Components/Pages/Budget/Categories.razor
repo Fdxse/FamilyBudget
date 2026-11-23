@@ -1,0 +1,174 @@
+@page "/grupp/{GroupId:int}/kategorier"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+
+<PageTitle>Kategorier</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="kategorier" />
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    <div class="row">
+        <div class="col-lg-6">
+            <ul class="list-group mb-3">
+                @foreach (var categoryRow in categoryRows)
+                {
+                    <li class="list-group-item d-flex gap-2 align-items-center">
+                        @if (categoryRow.IsEditing)
+                        {
+                            <input class="form-control form-control-sm" @bind="categoryRow.EditedName" aria-label="Nytt namn" />
+                            <button class="btn btn-sm btn-primary" @onclick="() => RenameAsync(categoryRow)">Spara</button>
+                            <button class="btn btn-sm btn-link" @onclick="() => categoryRow.IsEditing = false">Avbryt</button>
+                        }
+                        else
+                        {
+                            <span class="flex-grow-1">@categoryRow.Category.Name</span>
+                            <span class="text-muted small">@categoryRow.EntryCount poster</span>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => categoryRow.IsEditing = true">Byt namn</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(categoryRow)">Ta bort</button>
+                        }
+                    </li>
+                }
+            </ul>
+
+            <EditForm Model="newCategory" OnValidSubmit="AddAsync">
+                <DataAnnotationsValidator />
+                <div class="d-flex gap-2">
+                    <InputText @bind-Value="newCategory.Name" class="form-control" placeholder="Ny kategori" aria-label="Ny kategori" />
+                    <button type="submit" class="btn btn-primary text-nowrap">Lägg till</button>
+                </div>
+                <ValidationMessage For="() => newCategory.Name" class="text-danger" />
+            </EditForm>
+            <p class="form-text mt-2">Tar du bort en kategori ligger posterna kvar, men utan kategori.</p>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private string? statusMessage;
+    private bool isError;
+    private BudgetGroup? budgetGroup;
+    private List<CategoryRow> categoryRows = [];
+    private NewCategoryForm newCategory = new();
+
+    [Parameter] public int GroupId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await LoadAsync();
+        }
+        isLoading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        var categories = await databaseContext.Categories
+            .Where(category => category.BudgetGroupId == GroupId)
+            .OrderBy(category => category.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        // How many entries use each category, so it is clear what a delete affects.
+        var entryCountsByCategory = await databaseContext.BudgetEntries
+            .Where(entry => entry.BudgetGroupId == GroupId && entry.CategoryId != null)
+            .GroupBy(entry => entry.CategoryId!.Value)
+            .Select(group => new { CategoryId = group.Key, EntryCount = group.Count() })
+            .ToDictionaryAsync(item => item.CategoryId, item => item.EntryCount);
+
+        categoryRows = categories
+            .Select(category => new CategoryRow(category, entryCountsByCategory.GetValueOrDefault(category.Id)))
+            .ToList();
+    }
+
+    private async Task AddAsync()
+    {
+        var categoryName = newCategory.Name.Trim();
+        if (categoryRows.Any(row => string.Equals(row.Category.Name, categoryName, StringComparison.OrdinalIgnoreCase)))
+        {
+            statusMessage = $"Kategorin '{categoryName}' finns redan.";
+            isError = true;
+            return;
+        }
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        databaseContext.Categories.Add(new Category { BudgetGroupId = GroupId, Name = categoryName });
+        await databaseContext.SaveChangesAsync();
+
+        statusMessage = null;
+        newCategory = new NewCategoryForm();
+        await LoadAsync();
+    }
+
+    private async Task RenameAsync(CategoryRow categoryRow)
+    {
+        var newName = categoryRow.EditedName.Trim();
+        if (newName.Length == 0 || newName.Length > 100)
+        {
+            statusMessage = "Namnet måste vara 1–100 tecken.";
+            isError = true;
+            return;
+        }
+        if (categoryRows.Any(row => row != categoryRow && string.Equals(row.Category.Name, newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            statusMessage = $"Kategorin '{newName}' finns redan.";
+            isError = true;
+            return;
+        }
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        await databaseContext.Categories
+            .Where(category => category.Id == categoryRow.Category.Id && category.BudgetGroupId == GroupId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(category => category.Name, newName));
+
+        statusMessage = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync(CategoryRow categoryRow)
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        // Entries and templates keep existing; the database sets their category to empty.
+        await databaseContext.Categories
+            .Where(category => category.Id == categoryRow.Category.Id && category.BudgetGroupId == GroupId)
+            .ExecuteDeleteAsync();
+
+        statusMessage = $"Kategorin '{categoryRow.Category.Name}' är borttagen.";
+        isError = false;
+        await LoadAsync();
+    }
+
+    /// <summary>One category in the list, with editing state.</summary>
+    private sealed class CategoryRow(Category category, int entryCount)
+    {
+        public Category Category { get; } = category;
+        public int EntryCount { get; } = entryCount;
+        public bool IsEditing { get; set; }
+        public string EditedName { get; set; } = category.Name;
+    }
+
+    private sealed class NewCategoryForm
+    {
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(100)]
+        public string Name { get; set; } = string.Empty;
+    }
+}

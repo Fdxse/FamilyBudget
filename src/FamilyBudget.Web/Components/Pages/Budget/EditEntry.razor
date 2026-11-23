@@ -1,0 +1,357 @@
+@page "/grupp/{GroupId:int}/poster/ny"
+@page "/grupp/{GroupId:int}/poster/{EntryId:int}"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsNew ? "Ny post" : "Ändra post")</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null || (!IsNew && !entryExists))
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="poster" />
+
+    <h2 class="h4">@(IsNew ? (form.Kind == EntryKind.Income ? "Ny inkomst" : "Ny faktura/utgift") : $"Ändra {form.Name}")</h2>
+
+    <div class="row">
+        <div class="col-lg-7">
+            <StatusMessage Message="@errorMessage" IsError="true" />
+
+            <EditForm Model="form" OnValidSubmit="SaveAsync">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label class="form-label d-block">Typ</label>
+                    <InputRadioGroup @bind-Value="form.Kind">
+                        <div class="form-check form-check-inline">
+                            <InputRadio Value="EntryKind.Expense" class="form-check-input" id="kindExpense" />
+                            <label class="form-check-label" for="kindExpense">Faktura/utgift</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <InputRadio Value="EntryKind.Income" class="form-check-input" id="kindIncome" />
+                            <label class="form-check-label" for="kindIncome">Inkomst</label>
+                        </div>
+                    </InputRadioGroup>
+                </div>
+
+                <div class="mb-3">
+                    <label for="name" class="form-label">Namn</label>
+                    <InputText id="name" @bind-Value="form.Name" class="form-control" placeholder="t.ex. Elräkning, Hemförsäkring, Lön" />
+                    <ValidationMessage For="() => form.Name" class="text-danger" />
+                </div>
+
+                <div class="row">
+                    <div class="col-sm-6 mb-3">
+                        <label for="category" class="form-label">Kategori</label>
+                        <InputSelect id="category" @bind-Value="form.CategoryId" class="form-select">
+                            <option value="">Ingen kategori</option>
+                            @foreach (var category in categories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-sm-6 mb-3">
+                        <label for="amount" class="form-label">Belopp (kr)</label>
+                        <InputNumber id="amount" @bind-Value="form.Amount" class="form-control" step="0.01" />
+                        <ValidationMessage For="() => form.Amount" class="text-danger" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-sm-4 mb-3">
+                        <label for="periodicity" class="form-label">Hur ofta</label>
+                        <InputSelect id="periodicity" @bind-Value="form.Periodicity" class="form-select">
+                            @foreach (var periodicity in Enum.GetValues<Periodicity>())
+                            {
+                                <option value="@periodicity">@BudgetTexts.Periodicity(periodicity)</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-sm-4 mb-3">
+                        <label for="firstDueDate" class="form-label">@(form.Periodicity == Periodicity.Once ? "Förfallodag" : "Första förfallodag")</label>
+                        <InputDate id="firstDueDate" @bind-Value="form.FirstDueDate" class="form-control" />
+                    </div>
+                    @if (form.Periodicity != Periodicity.Once)
+                    {
+                        <div class="col-sm-4 mb-3">
+                            <label for="endDate" class="form-label">Slutar (valfritt)</label>
+                            <InputDate id="endDate" @bind-Value="form.EndDate" class="form-control" />
+                        </div>
+                    }
+                </div>
+
+                <div class="mb-3">
+                    <label for="note" class="form-label">Anteckning (valfritt)</label>
+                    <InputTextArea id="note" @bind-Value="form.Note" class="form-control" rows="2" />
+                </div>
+
+                @if (IsNew)
+                {
+                    <div class="form-check mb-3">
+                        <InputCheckbox id="saveAsTemplate" @bind-Value="form.SaveAsTemplate" class="form-check-input" />
+                        <label for="saveAsTemplate" class="form-check-label">Spara även som mall, så att den går snabbt att lägga till igen</label>
+                    </div>
+                }
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Spara</button>
+                    <a class="btn btn-outline-secondary" href="@($"grupp/{GroupId}/poster")">Avbryt</a>
+                </div>
+            </EditForm>
+
+            @if (!IsNew)
+            {
+                <hr class="my-4" />
+                @* Two-step delete so it cannot happen by mistake. *@
+                @if (!isConfirmingDelete)
+                {
+                    <button class="btn btn-outline-danger" @onclick="() => isConfirmingDelete = true">Ta bort…</button>
+                }
+                else
+                {
+                    <p>Ta bort <strong>@form.Name</strong> och alla registrerade betalningar för den?</p>
+                    <button class="btn btn-danger me-2" @onclick="DeleteAsync">Ja, ta bort</button>
+                    <button class="btn btn-link" @onclick="() => isConfirmingDelete = false">Avbryt</button>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool entryExists;
+    private bool isConfirmingDelete;
+    private string? errorMessage;
+    private BudgetGroup? budgetGroup;
+    private List<Category> categories = [];
+    private EntryForm form = new();
+
+    [Parameter] public int GroupId { get; set; }
+    [Parameter] public int? EntryId { get; set; }
+
+    /// <summary>"inkomst" or "utgift" when creating a new entry.</summary>
+    [SupplyParameterFromQuery(Name = "typ")] public string? KindFromQuery { get; set; }
+
+    /// <summary>Template id to pre-fill a new entry from.</summary>
+    [SupplyParameterFromQuery(Name = "mall")] public int? TemplateId { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    private bool IsNew => EntryId is null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        categories = await databaseContext.Categories
+            .Where(category => category.BudgetGroupId == GroupId)
+            .OrderBy(category => category.Name)
+            .ToListAsync();
+
+        if (IsNew)
+        {
+            form = await CreateNewFormAsync(databaseContext);
+        }
+        else
+        {
+            // Only load entries of this group, so an id from another group cannot be opened.
+            var existingEntry = await databaseContext.BudgetEntries
+                .FirstOrDefaultAsync(entry => entry.Id == EntryId && entry.BudgetGroupId == GroupId);
+            entryExists = existingEntry is not null;
+            if (existingEntry is not null)
+            {
+                form = EntryForm.FromEntry(existingEntry);
+            }
+        }
+
+        isLoading = false;
+    }
+
+    /// <summary>Starting values for a new entry: from a template if one was chosen, otherwise empty.</summary>
+    private async Task<EntryForm> CreateNewFormAsync(FamilyBudgetDbContext databaseContext)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var newForm = new EntryForm
+        {
+            Kind = KindFromQuery == "inkomst" ? EntryKind.Income : EntryKind.Expense,
+            FirstDueDate = today,
+        };
+
+        if (TemplateId is not null)
+        {
+            var template = await databaseContext.EntryTemplates
+                .FirstOrDefaultAsync(item => item.Id == TemplateId && item.BudgetGroupId == GroupId);
+            if (template is not null)
+            {
+                newForm.Kind = template.Kind;
+                newForm.Name = template.Name;
+                newForm.CategoryId = template.CategoryId;
+                newForm.Amount = template.Amount;
+                newForm.Periodicity = template.Periodicity;
+                newForm.Note = template.Note;
+                newForm.FirstDueDate = NextDateWithDay(today, template.DayOfMonth);
+            }
+        }
+
+        return newForm;
+    }
+
+    /// <summary>
+    /// The next date (today or later) on the given day of month; e.g. day 25 on Nov 27 gives Dec 25.
+    /// Days that do not exist in a month (31 in April) become the month's last day.
+    /// </summary>
+    private static DateOnly NextDateWithDay(DateOnly today, int? dayOfMonth)
+    {
+        if (dayOfMonth is null)
+        {
+            return today;
+        }
+
+        var candidateDate = DateInMonth(today.Year, today.Month, dayOfMonth.Value);
+        if (candidateDate < today)
+        {
+            var nextMonth = today.AddMonths(1);
+            candidateDate = DateInMonth(nextMonth.Year, nextMonth.Month, dayOfMonth.Value);
+        }
+        return candidateDate;
+    }
+
+    private static DateOnly DateInMonth(int year, int month, int dayOfMonth) =>
+        new(year, month, Math.Min(dayOfMonth, DateTime.DaysInMonth(year, month)));
+
+    private async Task SaveAsync()
+    {
+        if (form.Periodicity == Periodicity.Once)
+        {
+            form.EndDate = null;
+        }
+        if (form.EndDate is { } endDate && endDate < form.FirstDueDate)
+        {
+            errorMessage = "Slutdatumet kan inte vara före första förfallodagen.";
+            return;
+        }
+
+        // Make sure the chosen category belongs to this group.
+        if (form.CategoryId is { } chosenCategoryId && categories.All(category => category.Id != chosenCategoryId))
+        {
+            form.CategoryId = null;
+        }
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+
+        BudgetEntry entryToSave;
+        if (IsNew)
+        {
+            entryToSave = new BudgetEntry { BudgetGroupId = GroupId };
+            databaseContext.BudgetEntries.Add(entryToSave);
+        }
+        else
+        {
+            var existingEntry = await databaseContext.BudgetEntries
+                .FirstOrDefaultAsync(entry => entry.Id == EntryId && entry.BudgetGroupId == GroupId);
+            if (existingEntry is null)
+            {
+                errorMessage = "Posten finns inte längre.";
+                return;
+            }
+            entryToSave = existingEntry;
+        }
+
+        form.CopyTo(entryToSave);
+
+        if (IsNew && form.SaveAsTemplate)
+        {
+            databaseContext.EntryTemplates.Add(new EntryTemplate
+            {
+                BudgetGroupId = GroupId,
+                Kind = form.Kind,
+                Name = form.Name.Trim(),
+                CategoryId = form.CategoryId,
+                Amount = form.Amount,
+                Periodicity = form.Periodicity,
+                DayOfMonth = form.FirstDueDate.Day,
+                Note = form.Note,
+            });
+        }
+
+        await databaseContext.SaveChangesAsync();
+        Navigation.NavigateTo($"grupp/{GroupId}/poster");
+    }
+
+    private async Task DeleteAsync()
+    {
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        // Payments are removed automatically (cascade delete).
+        await databaseContext.BudgetEntries
+            .Where(entry => entry.Id == EntryId && entry.BudgetGroupId == GroupId)
+            .ExecuteDeleteAsync();
+        Navigation.NavigateTo($"grupp/{GroupId}/poster");
+    }
+
+    /// <summary>Values edited in the form.</summary>
+    private sealed class EntryForm
+    {
+        public EntryKind Kind { get; set; }
+
+        [Required(ErrorMessage = "Ange ett namn.")]
+        [StringLength(150)]
+        public string Name { get; set; } = string.Empty;
+
+        public int? CategoryId { get; set; }
+
+        [Range(typeof(decimal), "0", "99999999", ErrorMessage = "Ange ett belopp (0 eller mer).")]
+        public decimal Amount { get; set; }
+
+        public Periodicity Periodicity { get; set; } = Periodicity.Monthly;
+
+        public DateOnly FirstDueDate { get; set; }
+
+        public DateOnly? EndDate { get; set; }
+
+        [StringLength(1000)]
+        public string? Note { get; set; }
+
+        public bool SaveAsTemplate { get; set; }
+
+        public static EntryForm FromEntry(BudgetEntry entry) => new()
+        {
+            Kind = entry.Kind,
+            Name = entry.Name,
+            CategoryId = entry.CategoryId,
+            Amount = entry.Amount,
+            Periodicity = entry.Periodicity,
+            FirstDueDate = entry.FirstDueDate,
+            EndDate = entry.EndDate,
+            Note = entry.Note,
+        };
+
+        public void CopyTo(BudgetEntry entry)
+        {
+            entry.Kind = Kind;
+            entry.Name = Name.Trim();
+            entry.CategoryId = CategoryId;
+            entry.Amount = Amount;
+            entry.Periodicity = Periodicity;
+            entry.FirstDueDate = FirstDueDate;
+            entry.EndDate = EndDate;
+            entry.Note = string.IsNullOrWhiteSpace(Note) ? null : Note.Trim();
+        }
+    }
+}

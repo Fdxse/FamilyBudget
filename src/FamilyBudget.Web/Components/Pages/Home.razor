@@ -7,16 +7,16 @@
 <h1>Hej @displayName!</h1>
 
 <h2 class="h5 mt-4">Dina budgetgrupper</h2>
-@if (budgetGroupNames.Count == 0)
+@if (memberBudgetGroups.Count == 0)
 {
     <p class="text-muted">Du är inte med i någon budgetgrupp ännu. Be den som administrerar FamilyBudget att lägga till dig.</p>
 }
 else
 {
     <ul>
-        @foreach (var budgetGroupName in budgetGroupNames)
+        @foreach (var memberBudgetGroup in memberBudgetGroups)
         {
-            <li>@budgetGroupName</li>
+            <li><a href="@($"grupp/{memberBudgetGroup.Id}")">@memberBudgetGroup.Name</a></li>
         }
     </ul>
 }
@@ -28,7 +28,7 @@ else
 
 @code {
     private string displayName = string.Empty;
-    private List<string> budgetGroupNames = [];
+    private List<(int Id, string Name)> memberBudgetGroups = [];
     private bool isDatabaseReachable;
     private string applicationVersion = "okänd";
 
@@ -48,9 +48,9 @@ else
             .FirstOrDefaultAsync(user => user.Id == currentUserId);
 
         displayName = currentUser?.DisplayName ?? string.Empty;
-        budgetGroupNames = currentUser?.BudgetGroupMemberships
-            .Select(membership => membership.BudgetGroup.Name)
-            .OrderBy(name => name)
+        memberBudgetGroups = currentUser?.BudgetGroupMemberships
+            .Select(membership => (membership.BudgetGroup.Id, membership.BudgetGroup.Name))
+            .OrderBy(budgetGroup => budgetGroup.Name)
             .ToList() ?? [];
 
         // The Git commit is passed into the image at build time (see Dockerfile / update script).

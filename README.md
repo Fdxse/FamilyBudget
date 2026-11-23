@@ -97,6 +97,17 @@ dotnet run --project src/FamilyBudget.Web
 - En person kan vara med i flera grupper. Den som glömt sitt lösenord får ett nytt av en administratör,
   och kan sedan byta det själv under *Byt lösenord*. Efter 5 felaktiga försök låses kontot i 5 minuter.
 
+## Fakturor och inkomster
+
+Klicka på en budgetgrupp på startsidan. Där finns fyra flikar:
+
+- **Månad:** allt som förfaller under månaden, med summor för inkomster, utgifter och vad som blir över.
+  Markera fakturor som *Betald* och inkomster som *Mottagen*. Beloppet kan justeras först (t.ex. lön med övertid).
+- **Fakturor och inkomster:** alla poster med periodicitet (engång, månad, kvartal, halvår, år),
+  nästa förfallodag och snittkostnad per månad.
+- **Mallar:** färdiga utgångspunkter, t.ex. "Lön" med vanligt belopp och dag. *Lägg till* öppnar en ifylld ny post.
+- **Kategorier:** varje grupp har egna kategorier. Standardkategorier skapas första gången gruppen öppnas.
+
 ## Databasändringar (migreringar)
 
 Tabellerna skapas och uppdateras automatiskt när appen startar. Vid ändringar i datamodellen skapas en ny

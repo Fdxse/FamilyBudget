@@ -15,4 +15,10 @@ public class BudgetGroup
 
     /// <summary>The users who can see and edit this group's budget.</summary>
     public List<BudgetGroupMembership> Memberships { get; set; } = [];
+
+    /// <summary>
+    /// True once the standard categories have been created for this group, so they are
+    /// not re-created if the members later delete some of them.
+    /// </summary>
+    public bool DefaultCategoriesCreated { get; set; }
 }
