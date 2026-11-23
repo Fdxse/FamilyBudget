@@ -8,7 +8,7 @@
 set -euo pipefail
 
 nas_ssh_target="${1:-${NAS_SSH_TARGET:-admin@nas.local}}"
-nas_repository_path="${2:-${NAS_REPOSITORY_PATH:-/volume1/docker/familybudget}}"
+nas_repository_path="${2:-${NAS_REPOSITORY_PATH:-/volume1/Ekonomi/FamilyBudget/app}}"
 
 # -t gives a terminal so sudo on the NAS can ask for a password if needed.
 ssh -t "$nas_ssh_target" "cd '$nas_repository_path' && ./deploy/update.sh"

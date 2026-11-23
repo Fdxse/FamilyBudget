@@ -10,7 +10,7 @@ param(
     [string]$NasSshTarget = $(if ($env:NAS_SSH_TARGET) { $env:NAS_SSH_TARGET } else { "admin@nas.local" }),
 
     # Where the repository is cloned on the NAS.
-    [string]$NasRepositoryPath = $(if ($env:NAS_REPOSITORY_PATH) { $env:NAS_REPOSITORY_PATH } else { "/volume1/docker/familybudget" })
+    [string]$NasRepositoryPath = $(if ($env:NAS_REPOSITORY_PATH) { $env:NAS_REPOSITORY_PATH } else { "/volume1/Ekonomi/FamilyBudget/app" })
 )
 
 $ErrorActionPreference = "Stop"
