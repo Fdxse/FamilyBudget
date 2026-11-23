@@ -115,6 +115,8 @@ Klicka på en budgetgrupp på startsidan. Där finns fyra flikar:
 - **Budget**: sätt en månadsbudget per kategori och jämför med utfallet för en vald månad.
   Kolumnen "Snitt 12 mån" hjälper till att välja en rimlig nivå. Årsvyn markerar månader över budget med rött.
 - **Statistik**: år mot år, fördelning av utgifter per kategori för ett valt år och årets största utgifter.
+  Under **Per namn** summeras allt med samma namn på en rad. Klicka dig ner från hela perioden till år och månad,
+  eller klicka på ett namn för att se det över tiden.
 
 ## Databasändringar (migreringar)
 

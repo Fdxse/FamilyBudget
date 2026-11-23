@@ -16,6 +16,7 @@ else if (budgetGroup is null)
 else
 {
     <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="statistik" />
+    <StatisticsNav GroupId="GroupId" ActiveView="oversikt" />
 
     @if (yearSummaries.Count == 0)
     {
@@ -169,18 +170,13 @@ else
 
     private async Task LoadAsync()
     {
-        var dateSpan = await OutcomeCalculator.GetDateSpanAsync(GroupId);
-        if (dateSpan is null)
+        var currentYear = DateTime.Today.Year;
+        (allItems, var firstYear, var lastYear) = await OutcomeCalculator.GetAllItemsAsync(GroupId);
+        if (allItems.Count == 0)
         {
             yearSummaries = [];
             return;
         }
-
-        // Recurring entries go on forever, so stop at the end of this year (or of the last one-off entry, if later).
-        var currentYear = DateTime.Today.Year;
-        var lastYear = Math.Max(currentYear, dateSpan.Value.LastDate.Year);
-        var firstYear = dateSpan.Value.FirstDate.Year;
-        allItems = await OutcomeCalculator.GetItemsAsync(GroupId, new DateOnly(firstYear, 1, 1), new DateOnly(lastYear, 12, 31));
 
         yearSummaries = Enumerable.Range(firstYear, lastYear - firstYear + 1)
             .Select(year =>

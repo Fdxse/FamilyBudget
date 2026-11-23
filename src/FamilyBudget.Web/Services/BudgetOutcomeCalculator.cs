@@ -88,6 +88,26 @@ public class BudgetOutcomeCalculator(IDbContextFactory<FamilyBudgetDbContext> co
         return (firstDate, lastDate);
     }
 
+    /// <summary>
+    /// Every occurrence from the group's first entry to the end of the current year
+    /// (or of the last one-off entry, if that is later). Empty when the group has no entries.
+    /// </summary>
+    /// <remarks>Recurring entries without end date go on forever, so the current year is the stop.</remarks>
+    public async Task<(List<OutcomeItem> Items, int FirstYear, int LastYear)> GetAllItemsAsync(int budgetGroupId)
+    {
+        var currentYear = DateTime.Today.Year;
+        var dateSpan = await GetDateSpanAsync(budgetGroupId);
+        if (dateSpan is null)
+        {
+            return ([], currentYear, currentYear);
+        }
+
+        var firstYear = dateSpan.Value.FirstDate.Year;
+        var lastYear = Math.Max(currentYear, dateSpan.Value.LastDate.Year);
+        var items = await GetItemsAsync(budgetGroupId, new DateOnly(firstYear, 1, 1), new DateOnly(lastYear, 12, 31));
+        return (items, firstYear, lastYear);
+    }
+
     /// <summary>Monthly budget per category id for the group.</summary>
     public async Task<Dictionary<int, decimal>> GetMonthlyBudgetsAsync(int budgetGroupId)
     {
