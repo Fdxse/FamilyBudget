@@ -19,6 +19,11 @@ RUN dotnet publish src/FamilyBudget.Web/FamilyBudget.Web.csproj \
     --no-restore \
     --output /app/publish
 
+# Files checked out on a Synology share can carry mode 000 (access is granted by ACLs,
+# which Docker does not copy). Make the published files readable for the non-root
+# runtime user, otherwise e.g. appsettings.json gives "Permission denied".
+RUN chmod -R a+rX /app/publish
+
 # --- Runtime stage ---------------------------------------------------------
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
