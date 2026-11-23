@@ -1,0 +1,370 @@
+@page "/grupp/{GroupId:int}/skapa-manad"
+@page "/grupp/{GroupId:int}/skapa-manad/{Year:int}/{Month:int}"
+@rendermode InteractiveServer
+@inject BudgetGroupAccess GroupAccess
+@inject BudgetOutcomeCalculator OutcomeCalculator
+@inject IDbContextFactory<FamilyBudgetDbContext> ContextFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Skapa månad</PageTitle>
+
+@if (isLoading)
+{
+    <p>Laddar…</p>
+}
+else if (budgetGroup is null)
+{
+    <NoAccess />
+}
+else
+{
+    <BudgetGroupTabs GroupId="GroupId" GroupName="@budgetGroup.Name" ActiveTab="manad" />
+
+    @* Month navigation *@
+    <div class="d-flex align-items-center gap-3 mb-3">
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
+        <h2 class="h4 mb-0">Skapa @BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
+        <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+    </div>
+
+    <p class="form-text">
+        Förslaget bygger på dina mallar och på förra månadens engångsposter. Justera belopp och datum,
+        bocka ur det som inte ska med och tryck <em>Spara</em>, så skapas alla poster på en gång.
+        Det som redan finns i månaden är urbockat så att inget blir dubbelt.
+    </p>
+
+    <StatusMessage Message="@statusMessage" IsError="@isError" />
+
+    @foreach (var kind in new[] { EntryKind.Income, EntryKind.Expense })
+    {
+        var rowsOfKind = proposalRows.Where(proposalRow => proposalRow.Kind == kind).ToList();
+        <div class="d-flex align-items-center gap-2 mt-4 mb-2">
+            <h3 class="h5 mb-0">@(kind == EntryKind.Income ? "Inkomster" : "Fakturor och utgifter")</h3>
+            <button class="btn btn-sm @(kind == EntryKind.Income ? "btn-outline-success" : "btn-outline-primary")"
+                    @onclick="() => AddEmptyRow(kind)">+ Lägg till rad</button>
+        </div>
+
+        @if (rowsOfKind.Count == 0)
+        {
+            <p class="text-muted">Inga förslag.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle create-month-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 2.5rem"><span class="visually-hidden">Ta med</span></th>
+                            <th>Namn</th>
+                            <th style="width: 14rem">Kategori</th>
+                            <th style="width: 10rem">Datum</th>
+                            <th style="width: 10rem" class="text-end">Belopp</th>
+                            <th>Källa</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var proposalRow in rowsOfKind)
+                        {
+                            <tr class="@(proposalRow.IsIncluded ? "" : "text-muted")">
+                                <td>
+                                    <input type="checkbox" class="form-check-input" @bind="proposalRow.IsIncluded"
+                                           aria-label="@($"Ta med {proposalRow.Name}")" />
+                                </td>
+                                <td><input class="form-control form-control-sm" @bind="proposalRow.Name" aria-label="Namn" /></td>
+                                <td>
+                                    <select class="form-select form-select-sm" @bind="proposalRow.CategoryId" aria-label="Kategori">
+                                        <option value="">Ingen kategori</option>
+                                        @foreach (var category in categories)
+                                        {
+                                            <option value="@category.Id">@category.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td><input type="date" class="form-control form-control-sm" @bind="proposalRow.DueDate" aria-label="Datum" /></td>
+                                <td><input type="number" step="0.01" min="0" class="form-control form-control-sm text-end" @bind="proposalRow.Amount" aria-label="Belopp" /></td>
+                                <td class="small text-muted text-nowrap">
+                                    @proposalRow.Source
+                                    @if (proposalRow.AlreadyExists)
+                                    {
+                                        <span class="badge text-bg-warning ms-1">Finns redan i månaden</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr class="fw-semibold">
+                            <td></td>
+                            <td colspan="3">Totalt (@rowsOfKind.Count(proposalRow => proposalRow.IsIncluded) st)</td>
+                            <td class="text-end">@BudgetTexts.Money(rowsOfKind.Where(proposalRow => proposalRow.IsIncluded).Sum(proposalRow => proposalRow.Amount))</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    }
+
+    @* Live summary of what will be created. *@
+    <div class="card my-4">
+        <div class="card-body d-flex flex-wrap align-items-center gap-4">
+            <div><div class="text-muted small">Inkomster</div><div class="fs-5">@BudgetTexts.Money(IncludedTotal(EntryKind.Income))</div></div>
+            <div><div class="text-muted small">Utgifter</div><div class="fs-5">@BudgetTexts.Money(IncludedTotal(EntryKind.Expense))</div></div>
+            <div>
+                <div class="text-muted small">Över</div>
+                <div class="fs-5 @(IncludedTotal(EntryKind.Income) - IncludedTotal(EntryKind.Expense) < 0 ? "text-danger" : "text-success")">
+                    @BudgetTexts.Money(IncludedTotal(EntryKind.Income) - IncludedTotal(EntryKind.Expense))
+                </div>
+            </div>
+            <div class="ms-auto d-flex gap-2">
+                <a class="btn btn-outline-secondary" href="@($"grupp/{GroupId}/manad/{shownYear}/{shownMonth}")">Avbryt</a>
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(isSaving || proposalRows.All(proposalRow => !proposalRow.IsIncluded))">
+                    Spara @proposalRows.Count(proposalRow => proposalRow.IsIncluded) poster
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // Due day used when neither a template nor last month says anything else.
+    private const int DefaultDueDay = 25;
+
+    private bool isLoading = true;
+    private bool isSaving;
+    private string? statusMessage;
+    private bool isError;
+    private BudgetGroup? budgetGroup;
+    private List<Category> categories = [];
+    private List<ProposalRow> proposalRows = [];
+    private int shownYear;
+    private int shownMonth;
+
+    [Parameter] public int GroupId { get; set; }
+    [Parameter] public int? Year { get; set; }
+    [Parameter] public int? Month { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; } = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Without year/month in the address, propose next month.
+        var nextMonth = DateOnly.FromDateTime(DateTime.Today).AddMonths(1);
+        shownYear = Year is >= 1900 and <= 2200 ? Year.Value : nextMonth.Year;
+        shownMonth = Month is >= 1 and <= 12 ? Month.Value : nextMonth.Month;
+        statusMessage = null;
+
+        var authenticationState = await AuthenticationStateTask;
+        budgetGroup = await GroupAccess.GetGroupForMemberAsync(authenticationState.User, GroupId);
+        if (budgetGroup is not null)
+        {
+            await BuildProposalAsync();
+        }
+        isLoading = false;
+    }
+
+    /// <summary>Fills the table with one row per template and per one-off entry from the month before.</summary>
+    private async Task BuildProposalAsync()
+    {
+        var firstDayOfMonth = new DateOnly(shownYear, shownMonth, 1);
+        var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+        var firstDayOfPreviousMonth = firstDayOfMonth.AddMonths(-1);
+
+        await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+        categories = await databaseContext.Categories
+            .Where(category => category.BudgetGroupId == GroupId)
+            .OrderBy(category => category.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        var templates = await databaseContext.EntryTemplates
+            .Where(template => template.BudgetGroupId == GroupId)
+            .Include(template => template.Category)
+            .OrderBy(template => template.Name)
+            .AsNoTracking()
+            .ToListAsync();
+
+        // Last month's one-off entries, with what was actually paid if that is registered.
+        var previousMonthEntries = await databaseContext.BudgetEntries
+            .Where(entry => entry.BudgetGroupId == GroupId
+                && entry.Periodicity == Periodicity.Once
+                && entry.FirstDueDate >= firstDayOfPreviousMonth
+                && entry.FirstDueDate < firstDayOfMonth)
+            .Include(entry => entry.Category)
+            .Include(entry => entry.Payments)
+            .OrderBy(entry => entry.FirstDueDate)
+            .AsNoTracking()
+            .ToListAsync();
+
+        // Everything already due in the target month (one-off and recurring), to avoid duplicates.
+        var existingItems = await OutcomeCalculator.GetItemsAsync(GroupId, firstDayOfMonth, lastDayOfMonth);
+        var existingNames = existingItems
+            .Select(item => (item.Kind, BudgetTexts.NameKey(item.EntryName)))
+            .ToHashSet();
+
+        proposalRows = [];
+        var proposedNames = new HashSet<(EntryKind, string)>();
+
+        foreach (var template in templates)
+        {
+            var nameKey = (template.Kind, BudgetTexts.NameKey(template.Name));
+            if (!proposedNames.Add(nameKey))
+            {
+                continue;
+            }
+            proposalRows.Add(new ProposalRow
+            {
+                Kind = template.Kind,
+                Name = template.Name.Trim(),
+                CategoryId = template.CategoryId,
+                Amount = template.Amount,
+                DueDate = DateInMonth(template.DayOfMonth ?? DefaultDueDay),
+                Note = template.Note,
+                Source = "Mall",
+                AlreadyExists = existingNames.Contains(nameKey),
+            });
+        }
+
+        foreach (var previousEntry in previousMonthEntries)
+        {
+            // A template with the same name already covers it.
+            var nameKey = (previousEntry.Kind, BudgetTexts.NameKey(previousEntry.Name));
+            if (!proposedNames.Add(nameKey))
+            {
+                continue;
+            }
+            var paidAmount = previousEntry.Payments.FirstOrDefault()?.Amount;
+            proposalRows.Add(new ProposalRow
+            {
+                Kind = previousEntry.Kind,
+                Name = previousEntry.Name.Trim(),
+                CategoryId = previousEntry.CategoryId,
+                Amount = paidAmount ?? previousEntry.Amount,
+                DueDate = DateInMonth(previousEntry.FirstDueDate.Day),
+                Note = previousEntry.Note,
+                Source = "Förra månaden",
+                AlreadyExists = existingNames.Contains(nameKey),
+            });
+        }
+
+        // Rows that already exist are kept visible but not ticked.
+        foreach (var proposalRow in proposalRows)
+        {
+            proposalRow.IsIncluded = !proposalRow.AlreadyExists;
+        }
+
+        proposalRows = proposalRows
+            .OrderBy(proposalRow => proposalRow.DueDate)
+            .ThenBy(proposalRow => proposalRow.Name)
+            .ToList();
+    }
+
+    private void AddEmptyRow(EntryKind kind)
+    {
+        proposalRows.Add(new ProposalRow
+        {
+            Kind = kind,
+            DueDate = DateInMonth(DefaultDueDay),
+            Source = "Ny rad",
+            IsIncluded = true,
+        });
+    }
+
+    /// <summary>Creates one one-off entry per ticked row, all in one database transaction.</summary>
+    private async Task SaveAsync()
+    {
+        var rowsToSave = proposalRows.Where(proposalRow => proposalRow.IsIncluded).ToList();
+
+        // Check everything first so either all rows are saved or none.
+        var missingName = rowsToSave.FirstOrDefault(proposalRow => string.IsNullOrWhiteSpace(proposalRow.Name));
+        if (missingName is not null)
+        {
+            ShowError("Alla rader som är med måste ha ett namn.");
+            return;
+        }
+        var invalidAmount = rowsToSave.FirstOrDefault(proposalRow => proposalRow.Amount < 0);
+        if (invalidAmount is not null)
+        {
+            ShowError($"Beloppet för '{invalidAmount.Name}' kan inte vara negativt.");
+            return;
+        }
+        var tooLongName = rowsToSave.FirstOrDefault(proposalRow => proposalRow.Name.Trim().Length > 150);
+        if (tooLongName is not null)
+        {
+            ShowError($"Namnet '{tooLongName.Name[..30]}…' är för långt (högst 150 tecken).");
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await using var databaseContext = await ContextFactory.CreateDbContextAsync();
+            var groupCategoryIds = categories.Select(category => category.Id).ToHashSet();
+            foreach (var proposalRow in rowsToSave)
+            {
+                databaseContext.BudgetEntries.Add(new BudgetEntry
+                {
+                    BudgetGroupId = GroupId,
+                    Kind = proposalRow.Kind,
+                    Name = proposalRow.Name.Trim(),
+                    // Only accept categories that belong to this group.
+                    CategoryId = proposalRow.CategoryId is { } categoryId && groupCategoryIds.Contains(categoryId) ? categoryId : null,
+                    Amount = proposalRow.Amount,
+                    Periodicity = Periodicity.Once,
+                    FirstDueDate = proposalRow.DueDate,
+                    Note = proposalRow.Note,
+                });
+            }
+            // SaveChanges runs as one transaction: all rows or none.
+            await databaseContext.SaveChangesAsync();
+        }
+        finally
+        {
+            isSaving = false;
+        }
+
+        // Show the new month, where each post can be marked as paid.
+        Navigation.NavigateTo($"grupp/{GroupId}/manad/{shownYear}/{shownMonth}");
+    }
+
+    private decimal IncludedTotal(EntryKind kind) =>
+        proposalRows.Where(proposalRow => proposalRow.IsIncluded && proposalRow.Kind == kind).Sum(proposalRow => proposalRow.Amount);
+
+    /// <summary>The given day in the shown month; a day past the month's end becomes its last day (e.g. 31 → 30 Nov).</summary>
+    private DateOnly DateInMonth(int dayOfMonth)
+    {
+        var daysInMonth = DateTime.DaysInMonth(shownYear, shownMonth);
+        return new DateOnly(shownYear, shownMonth, Math.Clamp(dayOfMonth, 1, daysInMonth));
+    }
+
+    private void ShowError(string message)
+    {
+        statusMessage = message;
+        isError = true;
+    }
+
+    /// <summary>Link to the month <paramref name="monthOffset"/> months from the one shown.</summary>
+    private string MonthLink(int monthOffset)
+    {
+        var targetMonth = new DateOnly(shownYear, shownMonth, 1).AddMonths(monthOffset);
+        return $"grupp/{GroupId}/skapa-manad/{targetMonth.Year}/{targetMonth.Month}";
+    }
+
+    /// <summary>One proposed entry in the table, editable before saving.</summary>
+    private sealed class ProposalRow
+    {
+        public bool IsIncluded { get; set; }
+        public EntryKind Kind { get; init; }
+        public string Name { get; set; } = string.Empty;
+        public int? CategoryId { get; set; }
+        public decimal Amount { get; set; }
+        public DateOnly DueDate { get; set; }
+        public string? Note { get; init; }
+
+        /// <summary>Where the suggestion came from, shown to the user.</summary>
+        public string Source { get; init; } = string.Empty;
+
+        /// <summary>An entry with the same name and kind is already due in the month.</summary>
+        public bool AlreadyExists { get; init; }
+    }
+}

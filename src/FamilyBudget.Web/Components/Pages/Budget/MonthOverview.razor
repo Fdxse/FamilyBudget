@@ -23,6 +23,8 @@ else
         <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(-1)">‹ Föregående</a>
         <h2 class="h4 mb-0">@BudgetTexts.MonthTitle(shownYear, shownMonth)</h2>
         <a class="btn btn-outline-secondary btn-sm" href="@MonthLink(1)">Nästa ›</a>
+        @* Generate this month's bills and incomes from templates and last month in one go. *@
+        <a class="btn btn-outline-primary btn-sm ms-auto" href="@($"grupp/{GroupId}/skapa-manad/{shownYear}/{shownMonth}")">Skapa poster för månaden…</a>
     </div>
 
     @* Summary of the month *@

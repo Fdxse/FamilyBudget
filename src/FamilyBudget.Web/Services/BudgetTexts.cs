@@ -28,6 +28,13 @@ public static class BudgetTexts
     /// <summary>Whole kronor without decimals, for wide tables, e.g. "12 346".</summary>
     public static string WholeKronor(decimal amount) => amount.ToString("#,##0", SwedishCulture);
 
+    /// <summary>
+    /// Lower case with single spaces, so "SEB  bolån" and "SEB Bolån" count as the same name
+    /// when comparing or summing entries by name.
+    /// </summary>
+    public static string NameKey(string entryName) =>
+        string.Join(' ', entryName.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+
     public static string Kind(EntryKind kind) => kind == EntryKind.Income ? "Inkomst" : "Utgift";
 
     public static string Periodicity(Periodicity periodicity) => periodicity switch
